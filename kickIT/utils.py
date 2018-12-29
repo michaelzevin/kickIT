@@ -70,3 +70,46 @@ def inspiral_time_peters(a0,e0,m1,m2,af=0):
         return integral * (12./19.) * c0**4. / beta
     else:
         return (integral * (12./19.) * c0**4. / beta,af,eFinal)
+
+
+
+
+def cartesian_to_cylindrical(x,y,z,vx,vy,vz):
+    """
+    Transforms positions and velocities from cartesian to cylindrical coordinates
+    """
+
+    R = np.sqrt(x**2 + y**2)
+    vR = (x*vx + y*vy)/np.sqrt(x**2 + y**2)
+
+    T = np.arctan(y/x)
+    vT = (x*vy - y*vx)/(x**2 + y**2)
+
+    Z = z
+    vZ = vz
+
+    return R,T,Z,vR,vT,vZ
+
+
+def cylindrical_to_cartesian(R,T,Z,vR,vT,vZ):
+    """
+    Transforms positions and velocities from cylindrical to cartesian coordinates
+    """
+
+    x = R*np.cos(T)
+    vx = vR*np.cos(T) - R*np.sin(T)*vT
+
+    y = R*np.sin(T)
+    vy = vR*np.sin(T) + R*np.cos(T)*vT
+
+    z = Z
+    vz = vZ
+
+    return x,y,z,vx,vy,vz
+    
+
+
+
+
+
+

@@ -8,7 +8,9 @@ from scipy.integrate import ode
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
 
-import galpy as gp
+from galpy.potential import vcirc as gp_vcirc
+from galpy.orbit import Orbit as gp_orbit
+
 
 from . import utils
 
@@ -24,7 +26,7 @@ class Systems:
     System starts on a circular orbit in the r-phi (x-y) plane, on the x-axis (phi=0) and moving in the positive y direction. 
     Galaxy projection taken account when determining radial offset at merger. 
     """
-    def __init__(self, sampled_parameters, Nsys, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None):
+    def __init__(self, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None):
 
         # read in the sampled parameters
         self.Mns = np.asarray(sampled_parameters['Mns'])
@@ -35,18 +37,20 @@ class Systems:
         self.Vkick = np.asarray(sampled_parameters['Vkick'])
         self.R = np.asarray(sampled_parameters['R'])
 
+        self.Nsys = len(self.Mns)
+
         # initialize random angles
         if SNphi: self.SNphi = SNphi
-        else: self.SNphi = np.random.uniform(0,2*np.pi, Nsys)
+        else: self.SNphi = np.random.uniform(0,2*np.pi, self.Nsys)
 
         if SNtheta: self.SNtheta = SNtheta
-        else: self.SNtheta = np.arccos(np.random.uniform(0,1, Nsys))
+        else: self.SNtheta = np.arccos(np.random.uniform(0,1, self.Nsys))
 
         if SYSphi: self.SYSphi = SYSphi
-        else: self.SYSphi = np.random.uniform(0,2*np.pi, Nsys)
+        else: self.SYSphi = np.random.uniform(0,2*np.pi, self.Nsys)
 
         if SYStheta: self.SYStheta = SYStheta
-        else: self.SYStheta = np.arccos(np.random.uniform(0,1, Nsys))
+        else: self.SYStheta = np.arccos(np.random.uniform(0,1, self.Nsys))
 
 
     def SN(self):
@@ -161,15 +165,15 @@ class Systems:
 
         # Using galpy's vcirc method, we can easily calculate the rotation velocity at any R
         # Note we use the combination of *all* potentials up to the timestep t0
-        Vcirc = gp.potential.vcirc(gal.full_potentials[:(t0+1)], self.R*u.cm)
+        Vcirc = gp_vcirc(gal.full_potentials[:(t0+1)], self.R*u.cm)
         self.Vcirc = Vcirc.to(u.cm/u.s).value
 
         # Just to have them, calculate the circular velocity of each component as well
-        Vcirc_stars = gp.potential.vcirc(gal.stars_potentials[:(t0+1)], self.R*u.cm)
+        Vcirc_stars = gp_vcirc(gal.stars_potentials[:(t0+1)], self.R*u.cm)
         self.Vcirc_stars = Vcirc_stars.to(u.cm/u.s).value
-        Vcirc_gas = gp.potential.vcirc(gal.gas_potentials[:(t0+1)], self.R*u.cm)
+        Vcirc_gas = gp_vcirc(gal.gas_potentials[:(t0+1)], self.R*u.cm)
         self.Vcirc_gas = Vcirc_gas.to(u.cm/u.s).value
-        Vcirc_dm = gp.potential.vcirc(gal.dm_potentials[:(t0+1)], self.R*u.cm)
+        Vcirc_dm = gp_vcirc(gal.dm_potentials[:(t0+1)], self.R*u.cm)
         self.Vcirc_dm = Vcirc_dm.to(u.cm/u.s).value
         
 
@@ -225,15 +229,15 @@ class Systems:
         
 
 
-    def inspiral_time(self, Nsys):
+    def inspiral_time(self):
         """
         Calculates the GW inspiral time (in seconds) for the systems given their post-SN orbital properties
         """
 
-        self.Tinsp = np.nan * np.ones(Nsys)
+        self.Tinsp = np.nan * np.ones(self.Nsys)
 
         lt_tH_insp = 0
-        for idx in np.arange(Nsys):
+        for idx in np.arange(self.Nsys):
 
             # for systems that were disrupted, continue
             if self.SNsurvive[idx] == False:
@@ -254,6 +258,52 @@ class Systems:
                     lt_tH_insp += 1
 
         # return the fraction that merge within a Hubble time
-        return float(lt_tH_insp)/np.sum(self.SNsurvive)
+        if np.sum(self.SNsurvive) == 0:
+            return 0.0
+        else:
+            return float(lt_tH_insp)/np.sum(self.SNsurvive)
+
+
+
+
+    def evolve(self, gal, t0):
+        """
+        Evolves the tracer particles using galpy's 'Evolve' method
+        Does for each bound systems until one of two conditions are met:
+            1. The system evolves until the time of the sGRB
+            2. The system merges due to GW emission
+
+        Each system will evolve through a series of galactic potentials specified in distinct redshift bins in the 'gal' class
+        """
+
+        # loop over all tracers
+        for idx in np.arange(self.Nsys):
+
+            # first, check that the system servived ther supernova
+            if self.SNsurvive[idx] == False:
+                # write in NaNs here
+                continue
+
+            # first, save the three pertinent times (t_0, t_insp, and t_sgrb)
+        
+
+            # we need to transform the post-SN galactic velocity into cylindrical coordinates
+            
+                
+
+            # 
+
+
+
+        return
+
+
+
+
+
+
+
+
+
 
 

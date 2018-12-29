@@ -10,72 +10,144 @@ from astropy.table import Table
 from . import galaxy_history
 
 
-def sample_parameters(gal, t0=0, Nsys=1, Mns_method='gaussian', Mhe_method='uniform', Apre_method='uniform', epre_method='circularized', Vkick_method='maxwellian', R_method='sfr'):
+def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian', Mhe_method='uniform', Apre_method='uniform', epre_method='circularized', Vkick_method='maxwellian', R_method='sfr', samples=None):
     """
     Calls all the sampling functions defined below. 
     Returns a dataframe with the sampled parameters. 
+
+    Can input a (space-separated) table with data from a population synthesis model
+    When method='popsynth', must provide the path to the sample as the 'samples' argument
+    Units of data must be: Msun, Run, km/s, and column names must be same as below
     """
     bin_params=pd.DataFrame(columns=['Mns', 'Mcomp', 'Mhe', 'Apre', 'epre', 'Vkick', 'R'])
 
-    # FIXME: parameters of a given method should be able to be written in the executable
-    bin_params['Mcomp'], bin_params['Mns'] = sample_masses(Nsys, method=Mns_method)
-    bin_params['Mhe'] = sample_Mhe(Nsys, bin_params['Mns'], method=Mhe_method)
-    bin_params['Apre'] = sample_Apre(Nsys, method=Apre_method)
-    bin_params['epre'] = sample_epre(Nsys, method=epre_method)
-    bin_params['Vkick'] = sample_Vkick(Nsys, method=Vkick_method, sigma=265)
-    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method)
+    # if popsynth samples are provided, sample systems randomly from the popsynth data
+    if 'popsynth' in (Mcomp_method, Mns_method, Mhe_method, Apre_method, epre_method, Vkick_method, R_method):
+        if samples is None:
+            raise NameError("No popsynth samples were provided!")
+        popsynth_data = pd.read_csv(samples, sep=' ')
+        popsynth_data = popsynth_data.sample(Nsys)
+    else:
+        popsynth_data = None
+
+
+    # FIXME: parameters of a given method (such as the Vkick dispersion) should be able to be written in the executable
+    bin_params['Mcomp'] = sample_Mcomp(Nsys, method=Mcomp_method, samples=popsynth_data)
+    bin_params['Mns'] = sample_Mns(Nsys, method=Mns_method, samples=popsynth_data)
+    bin_params['Mhe'] = sample_Mhe(Nsys, bin_params['Mns'], method=Mhe_method, samples=popsynth_data)
+    bin_params['Apre'] = sample_Apre(Nsys, method=Apre_method, samples=popsynth_data)
+    bin_params['epre'] = sample_epre(Nsys, method=epre_method, samples=popsynth_data)
+    bin_params['Vkick'] = sample_Vkick(Nsys, method=Vkick_method, sigma=265, samples=popsynth_data)
+    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method, samples=popsynth_data)
+
 
     return bin_params
 
 
-def sample_masses(Nsys, method='gaussian', m1_params={'mean':1.33, 'sigma': 0.09}, m2_params={'mean':1.33, 'sigma': 0.09}, samples=None, gw_samples=None):
+def sample_Mcomp(Nsys, method='gaussian', mass_params={'mean':1.33, 'sigma': 0.09}, samples=None, gw_samples=None):
     """
-    Samples NS masses (m1 and m2)
+    Samples companion NS mass (m1)
     Inputs in units Msun
     Possible methods: 
-        'posterior': NS masses are sampled from a GW posterior, path to samples must be specified
-        'mean': NS masses are fixed at the mean of the posterior distritbuion, path to samples must be specified
-        'median': NS masses are fixed at the median of the posterior distribution, path to samples must be specified
-        'gaussian': NS masses are sampled from a Gaussian distribution tuned to the observed galactic DNS population
-        'fixed': NS masses are fixed to the mean specified in m1_params and m2_params
-        'popsynth': NS masses are taken from popsynth model at path 'samples'
+        'posterior': Mass is sampled from a GW posterior, path to samples must be specified
+        'mean': Mass is fixed at the mean of the posterior distritbuion, path to samples must be specified
+        'median': Masses is fixed at the median of the posterior distribution, path to samples must be specified
+        'gaussian': Mass are sampled from a Gaussian distribution tuned to the observed galactic DNS population
+        'fixed': Mass are fixed to the mean specified in m1_params and m2_params
+        'popsynth': Mass are taken from popsynth model at path 'samples'
     """
 
     if method=='posterior':
         samples = Table.read(gw_samples, format='ascii')
-        m1 = samples['m1_source'][np.random.randint(0,len(samples['m1_source']),Nsys)]
-        m2 = samples['m2_source'][np.random.randint(0,len(samples['m2_source']),Nsys)]
-        return m1,m2
+        Mcomp = samples['m1_source'][np.random.randint(0,len(samples['m1_source']),Nsys)]
+        return Mcomp
 
 
     elif method=='mean':
         samples = Table.read(gw_samples, format='ascii')
-        m1 = np.ones(Nsys)*np.mean(samples['m1_source'])*u.Msun.to(u.g)
-        m2 = np.ones(Nsys)*np.mean(samples['m2_source'])*u.Msun.to(u.g)
-        return m1,m2
+        Mcomp = np.ones(Nsys)*np.mean(samples['m1_source'])*u.Msun.to(u.g)
+        return Mcomp
 
 
     elif method=='median':
         samples = Table.read(gw_samples, format='ascii')
-        m1 = np.ones(Nsys)*np.median(samples['m1_source'])*u.Msun.to(u.g)
-        m2 = np.ones(Nsys)*np.median(samples['m2_source'])*u.Msun.to(u.g)
-        return m1,m2
+        Mcomp = np.ones(Nsys)*np.median(samples['m1_source'])*u.Msun.to(u.g)
+        return Mcomp
 
 
     elif method=='gaussian':
-        m1 = np.random.normal(m1_params['mean'], m1_params['sigma'], Nsys)*u.Msun.to(u.g)
-        m2 = np.random.normal(m2_params['mean'], m2_params['sigma'], Nsys)*u.Msun.to(u.g)
-        return m1,m2
+        Mcomp = np.random.normal(mass_params['mean'], mass_params['sigma'], Nsys)*u.Msun.to(u.g)
+        return Mcomp
 
 
     elif method=='fixed':
-        m1 = np.ones(Nsys) * m1_params['mean']*u.Msun.to(u.g)
-        m2 = np.ones(Nsys) * m2_params['mean']*u.Msun.to(u.g)
-        return m1,m2
+        Mcomp = np.ones(Nsys) * mass_params['mean']*u.Msun.to(u.g)
+        return Mcomp
+        
+    elif method=='popsynth':
+        if 'Mcomp' not in samples.columns:
+            raise NameError("Series '{0:s}' not in popsynth table".format('Mcomp'))
+        Mcomp = np.asarray(samples['Mcomp'] * u.Msun.to(u.g))
+        return Mcomp
 
 
     else:
-        raise ValueError("Undefined NS mass sampling method '{0:s}'.".format(method))
+        raise ValueError("Undefined companion mass sampling method '{0:s}'.".format(method))
+
+
+
+
+def sample_Mns(Nsys, method='gaussian', mass_params={'mean':1.33, 'sigma': 0.09}, samples=None, gw_samples=None):
+    """
+    Samples remnant NS mass (m2)
+    Inputs in units Msun
+    Possible methods: 
+        'posterior': Mass is sampled from a GW posterior, path to samples must be specified
+        'mean': Mass is fixed at the mean of the posterior distritbuion, path to samples must be specified
+        'median': Masses is fixed at the median of the posterior distribution, path to samples must be specified
+        'gaussian': Mass are sampled from a Gaussian distribution tuned to the observed galactic DNS population
+        'fixed': Mass are fixed to the mean specified in m1_params and m2_params
+        'popsynth': Mass are taken from popsynth model at path 'samples'
+    """
+
+    if method=='posterior':
+        samples = Table.read(gw_samples, format='ascii')
+        Mns = samples['m2_source'][np.random.randint(0,len(samples['m2_source']),Nsys)]
+        return Mns
+
+
+    elif method=='mean':
+        samples = Table.read(gw_samples, format='ascii')
+        Mns = np.ones(Nsys)*np.mean(samples['m2_source'])*u.Msun.to(u.g)
+        return Mns
+
+
+    elif method=='median':
+        samples = Table.read(gw_samples, format='ascii')
+        Mns = np.ones(Nsys)*np.median(samples['m2_source'])*u.Msun.to(u.g)
+        return Mns
+
+
+    elif method=='gaussian':
+        Mns = np.random.normal(mass_params['mean'], mass_params['sigma'], Nsys)*u.Msun.to(u.g)
+        return Mns
+
+
+    elif method=='fixed':
+        Mns = np.ones(Nsys) * mass_params['mean']*u.Msun.to(u.g)
+        return Mns
+        
+    elif method=='popsynth':
+        if 'Mns' not in samples.columns:
+            raise NameError("Series '{0:s}' not in popsynth table".format('Mns'))
+        Mns = np.asarray(samples['Mns'] * u.Msun.to(u.g))
+        return Mns
+
+
+    else:
+        raise ValueError("Undefined remnant mass sampling method '{0:s}'.".format(method))
+
+
 
 
 def sample_Mhe(Nsys, Mns, Mmax=8.0, method='uniform', fixed_val=None, samples=None):
@@ -109,7 +181,6 @@ def sample_Mhe(Nsys, Mns, Mmax=8.0, method='uniform', fixed_val=None, samples=No
             Anorm=1./A1
             II=np.random.uniform(0,1)
             Mhe.append(invpdf(II,Mmin))
-
         return np.asarray(Mhe)
 
 
@@ -119,7 +190,12 @@ def sample_Mhe(Nsys, Mns, Mmax=8.0, method='uniform', fixed_val=None, samples=No
         if (fixed_val*u.Msun.to(u.g) < Mns).any():
             raise ValueError("Fixed mass of {0:0.2f} Msun is below one of the NS masses!".format(fixed_val))
         Mhe = np.ones(Nsys)*fixed_val*u.Msun.to(u.g)
+        return Mhe
 
+    elif method=='popsynth':
+        if 'Mhe' not in samples.columns:
+            raise NameError("Series '{0:s}' not in popsynth table".format('Mhe'))
+        Mhe = np.asarray(samples['Mhe'] * u.Msun.to(u.g))
         return Mhe
 
 
@@ -155,6 +231,12 @@ def sample_Apre(Nsys, Amin=0.1, Amax=10, method='uniform', fixed_val=None, sampl
         Apre = np.ones(Nsys)*fixed_val*u.Rsun.to(u.cm)
         return Apre
 
+    elif method=='popsynth':
+        if 'Apre' not in samples.columns:
+            raise NameError("Series '{0:s}' not in popsynth table".format('Apre'))
+        Apre = np.asarray(samples['Mcomp'] * u.Rsun.to(u.cm))
+        return Apre
+
 
     else:
         raise ValueError("Undefined Apre sampling method '{0:s}'.".format(method))
@@ -176,6 +258,12 @@ def sample_epre(Nsys, method='circularized', samples=None):
 
     elif method=='thermal':
         epre = np.sqrt(np.random.uniform(0, 1, Nsys))
+        return epre
+
+    elif method=='popsynth':
+        if 'epre' not in samples.columns:
+            raise NameError("Series '{0:s}' not in popsynth table".format('epre'))
+        epre = np.asarray(samples['epre'])
         return epre
 
 
@@ -211,26 +299,33 @@ def sample_Vkick(Nsys, Vmin=0, Vmax=1000, method='maxwellian', sigma=265, fixed_
         Vkick = np.ones(Nsys)*fixed_val*u.km.to(u.cm)
         return Vkick
 
+    elif method=='popsynth':
+        if 'Vkick' not in samples.columns:
+            raise NameError("Series '{0:s}' not in popsynth table".format('Vkick'))
+        Vkick = np.asarray(samples['Vkick'] * u.km.to(u.cm))
+        return Vkick
+
 
     else:
         raise ValueError("Undefined Vkick sampling method '{0:s}'.".format(method))
         
 
 
-def sample_R(Nsys, gal, t0, method='sfr', fixed_val=None):
+def sample_R(Nsys, gal, t0, method='sfr', fixed_val=None, samples=None):
     """
     Samples the galactic radius at which to initiate the tracer particles
     Inputs in units kpc
     Possible methods: 
         'sfr': samples the location of the tracer particle according to the gas density at t0
         'fixed': takes a fixed radial distance for the location of the tracer particles
+        'popsynth': R is taken from popsynth model at path 'samples'
     """
 
     if method=='galpy_test':
         R = np.linspace(0.1,30, Nsys)*u.kpc.to(u.cm)
         return R
 
-    if method=='sfr':
+    elif method=='sfr':
         # The SFR radial distribution is given by a gamma distribution with k=3, theta=r_s
         # So, p(R) = 1/(2*r_s^3) * R^2 * np.exp(-R/r_s)
         # The CDF of this distribution is P(R) = 1/Gamma(k) * gamma(k, x/theta)
@@ -240,8 +335,21 @@ def sample_R(Nsys, gal, t0, method='sfr', fixed_val=None):
         return R
 
 
-    if method=='fixed':
+    elif method=='fixed':
         if fixed_val==None:
             raise ValueError("No fixed R specified!")
         R = np.ones(Nsys)*fixed_val*u.kpc.to(u.cm)
         return R
+
+    elif method=='popsynth':
+        if 'R' not in samples.columns:
+            raise NameError("Series '{0:s}' not in popsynth table".format('R'))
+        R = np.asarray(samples['R'] * u.kpc.to(u.cm))
+        return R
+
+
+    else:
+        raise ValueError("Undefined R sampling method '{0:s}'.".format(method))
+
+
+

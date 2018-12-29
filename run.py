@@ -45,6 +45,8 @@ def main(grb, Nsys, t0):
     """
     start = time.time()
 
+    popsynth_path = '/Users/michaelzevin/research/sgrb/example_bns.dat'
+
     # get galaxy information
     gal = galaxy_history.GalaxyHistory(\
                         obs_mass_stars = float(10**grb_props['log(M*)'] * u.Msun.to(u.g)),\
@@ -56,18 +58,19 @@ def main(grb, Nsys, t0):
                         name = str(grb_props['GRB']))
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[t0]))
 
-    # FIXME: add popsynth method
     # get sampled properties of tracer particles
     sampled_parameters = sample.sample_parameters(gal, t0=t0, Nsys=Nsys, \
-                            Mns_method='gaussian', \
-                            Mhe_method='powerlaw', \
-                            Apre_method='uniform', \
+                            Mcomp_method='popsynth', \
+                            Mns_method='popsynth', \
+                            Mhe_method='popsynth', \
+                            Apre_method='popsynth', \
                             epre_method='circularized', \
                             Vkick_method='maxwellian', \
-                            R_method='sfr')
+                            R_method='sfr', \
+                            samples = popsynth_path)
 
     # sample system parameters
-    systems = system.Systems(sampled_parameters, Nsys)
+    systems = system.Systems(sampled_parameters)
 
     # implement the supernova
     systems.SN()
@@ -82,11 +85,10 @@ def main(grb, Nsys, t0):
     systems.galactic_frame()
 
     # calculate the inspiral time for systems that survived
-    tH_inspiral_fraction = systems.inspiral_time(Nsys)
+    tH_inspiral_fraction = systems.inspiral_time()
     
-    # calculate the force at each redshift on a grid of r, theta
-
     # do evolution of each tracer particle (should parallelize this)
+    systems.evolve(gal, t0)
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))
