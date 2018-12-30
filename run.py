@@ -88,10 +88,12 @@ def main(grb, Nsys, t0):
     tH_inspiral_fraction = systems.inspiral_time()
     
     # do evolution of each tracer particle (should parallelize this)
-    systems.evolve(gal, t0)
+    systems.evolve(gal, t0, int_method='odeint')
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))
+
+    import pdb; pdb.set_trace()
 
 
 # MAIN FUNCTINON

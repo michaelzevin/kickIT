@@ -135,7 +135,7 @@ class GalaxyHistory:
             # time-step at 'galaxy formation' can lead to negative values, start at mass of 0 and drop out earlier times
             if dm > mstar:
                 # timestep at which M=0
-                self.tstep_0 = ii
+                self.tstep_nonzero = ii
 
                 formation_idx = ii+1
                 gal_sfr = gal_sfr[formation_idx:]
@@ -206,7 +206,7 @@ class GalaxyHistory:
             mdm = self.mass_dm[ii]
 
             if ii==0:
-                dt = self.times[ii] - self.tstep_0
+                dt = self.times[ii] - self.tstep_nonzero
             else:
                 dt = self.times[ii] - self.times[ii-1]
 

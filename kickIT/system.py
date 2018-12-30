@@ -11,7 +11,7 @@ from scipy.interpolate import interp1d
 from galpy.potential import vcirc as gp_vcirc
 from galpy.orbit import Orbit as gp_orbit
 
-
+from kickIT.galaxy_history import cosmology
 from . import utils
 
 
@@ -266,7 +266,7 @@ class Systems:
 
 
 
-    def evolve(self, gal, t0):
+    def evolve(self, gal, t0, int_method='odeint'):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
@@ -274,9 +274,34 @@ class Systems:
             2. The system merges due to GW emission
 
         Each system will evolve through a series of galactic potentials specified in distinct redshift bins in the 'gal' class
-        """
 
-        # loop over all tracers
+        Note that all units are cgs unless otherwise specified, and galpy is initialized to take in astropy units
+        """
+        print('Evolving orbits of the tracer particles...\n')
+
+        # initialize cosmology
+        cosmo = cosmology.Cosmology()
+
+        # save galpy's 'natural' units, which are specified in the galpyrc file (integration points are returned in natural units)
+        r0=8        # kpc
+        v0=220      # km/s
+
+        # set new field to notify the redshift of the system if merged before the end of the integration
+        self.merger_redz = np.nan*np.ones(self.Nsys)
+
+        # create new fields for offset and projected offset
+        self.R_offset = np.nan*np.ones(self.Nsys)
+        self.R_offset_proj = np.nan*np.ones(self.Nsys)
+
+        # and create empty fields for the final position and velocity of the system at the end of integration
+        self.x_final = np.nan*np.ones(self.Nsys)
+        self.y_final = np.nan*np.ones(self.Nsys)
+        self.z_final = np.nan*np.ones(self.Nsys)
+        self.vx_final = np.nan*np.ones(self.Nsys)
+        self.vy_final = np.nan*np.ones(self.Nsys)
+        self.vz_final = np.nan*np.ones(self.Nsys)
+
+        # loop over all tracers (should parallelize this...)
         for idx in np.arange(self.Nsys):
 
             # first, check that the system servived ther supernova
@@ -284,24 +309,89 @@ class Systems:
                 # write in NaNs here
                 continue
 
-            # first, save the three pertinent times (t_0, t_insp, and t_sgrb)
+            print('  Particle {0:d}:'.format(idx))
+
+            # if the system survived the supernova, jot down its inspiral time
+            Tinsp = self.Tinsp[idx]
+
+            # keep track of the time that has elapsed
+            T_elapsed = 0
+
+            # now, loop through all redshifts and evolving potential starting at timestep t0
+            tt=0
+            while tt < len(gal.times[t0:]-1):
+
+                # first, transform the post-SN systemic velocity 
+                if tt==0:
+                    # by construction, the systems start in the galactic plane, at x=R, y=0, and therefore phi=0
+                    R,T,Z,vR,vT,vZ = utils.cartesian_to_cylindrical(self.R[idx],0.0,0.0,self.Vpx[idx],self.Vpy[idx],self.Vpz[idx])
+                else:
+                    # extract the orbital properties at the end of the previous integration (note that galpy output is [r,vR,vT,Z,vZ,T])
+                    R,vR,vT,Z,vZ,T = orb.getOrbit()[-1]
+                    # convert from galpy's 'natural' units to cgs
+                    R = R * r0 * u.kpc.to(u.cm)
+                    vR = vR * v0 * u.km.to(u.cm)
+                    vT = vT * v0 * u.km.to(u.cm)
+                    Z = Z * r0 * u.kpc.to(u.cm)
+                    vZ = vZ * v0 * u.km.to(u.cm)
+                    T = T % (2*np.pi)
         
+                # record the amount of time that passes in this step
+                # compare the total time passed to the inspiral time of the system
+                dt = gal.times[tt+1]-gal.times[tt]
+                T_elapsed += dt
+                if T_elapsed > Tinsp:
+                    # store redshift of merger
+                    self.merger_redz = cosmo.tage_to_z(gal.times[tt]+Tinsp)
+                    # set dt to run until the system merges
+                    dt = Tinsp-gal.times[tt]
 
-            # we need to transform the post-SN galactic velocity into cylindrical coordinates
-            
-                
-
-            # 
-
-
-
-        return
-
-
-
-
+                    print('    merger occurred at z={0:0.2f}'.format(self.merger_redz))
+                    break
 
 
+                # get timesteps for this integration (set to 1000 steps for now)
+                ts = np.linspace(0*u.s,dt*u.s,1000)
+
+                # initialize the orbit and integrate
+                orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), T*u.rad])
+                orb.integrate(ts, gal.full_potentials[:(t0+1)], method=int_method)
+
+                if tt == len(gal.times[t0:]-1):
+                    print('    system did not merge prior to the sGRB...')
+
+                tt += 1
+
+
+            # once the system has either merged or integrated until the time of the sGRB, save offset
+            R_final = orb.getOrbit()[-1][0] * r0 * u.kpc.to(u.cm)
+            vR_final = orb.getOrbit()[-1][1] * v0 * u.km.to(u.cm)
+            vT_final = orb.getOrbit()[-1][2] * v0 * u.km.to(u.cm)
+            Z_final = orb.getOrbit()[-1][3] * r0 * u.kpc.to(u.cm)
+            vZ_final = orb.getOrbit()[-1][4] * v0 * u.km.to(u.cm)
+            T_final = orb.getOrbit()[-1][5] % (2*np.pi)
+
+            self.R_offset[idx] = R_final
+
+            # get final positions and velocities in Cartesian coordinates
+            x,y,z,vx,vy,vz = utils.cylindrical_to_cartesian(R_final,T_final,Z_final,vR_final,vT_final,vZ_final)
+            self.x_final[idx] = x
+            self.y_final[idx] = y
+            self.z_final[idx] = z
+            self.vx_final[idx] = vx
+            self.vy_final[idx] = vy
+            self.vz_final[idx] = vz
+
+            # randomly rotate the vectors by Euler rotations to get a mock projected offset, assuming observer is in z-hat direction
+            vec = np.atleast_2d([self.x_final[idx],self.y_final[idx],self.z_final[idx]])
+            rot_vec = utils.euler_rot(vec, (2*np.pi*np.random.random(size=1)), axis='X')
+            rot_vec = utils.euler_rot(rot_vec, (2*np.pi*np.random.random(size=1)), axis='Y')
+            rot_vec = utils.euler_rot(rot_vec, (2*np.pi*np.random.random(size=1)), axis='Z')
+            rot_vec = rot_vec.flatten()
+
+            self.R_offset_proj[idx] = np.sqrt(rot_vec[0]**2 + rot_vec[1]**2)
+
+            print('    offset: {0:0.2f} kpc (proj: {1:0.2f} kpc)'.format(self.R_offset[idx]*u.cm.to(u.kpc), self.R_offset_proj[idx]*u.cm.to(u.kpc)))
 
 
 

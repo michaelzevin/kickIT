@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 from scipy import integrate
 
 
@@ -83,7 +84,8 @@ def cartesian_to_cylindrical(x,y,z,vx,vy,vz):
     vR = (x*vx + y*vy)/np.sqrt(x**2 + y**2)
 
     T = np.arctan(y/x)
-    vT = (x*vy - y*vx)/(x**2 + y**2)
+    #FIXME check that this is right?
+    vT = (x*vy - y*vx)/np.sqrt(x**2 + y**2)
 
     Z = z
     vZ = vz
@@ -97,10 +99,10 @@ def cylindrical_to_cartesian(R,T,Z,vR,vT,vZ):
     """
 
     x = R*np.cos(T)
-    vx = vR*np.cos(T) - R*np.sin(T)*vT
+    vx = vR*np.cos(T) - vR*np.sin(T)*vT
 
     y = R*np.sin(T)
-    vy = vR*np.sin(T) + R*np.cos(T)*vT
+    vy = vR*np.sin(T) + vR*np.cos(T)*vT
 
     z = Z
     vz = vZ
