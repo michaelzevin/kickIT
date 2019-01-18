@@ -197,6 +197,12 @@ class GalaxyHistory:
         Rscale_baryons = np.zeros(self.times.size)
         Rscale_dm = np.zeros(self.times.size)
 
+        # Get the predicted scale radius at the time of the observation
+        # FIXME: the predicted scale radius is SMALLER than the observed effective radius...we were hoping for the opposite to be true...
+        mstar = self.mass_stars[len(self.times)-1]
+        _, R0_pred = baryons.sfr_rad_dist(self.rads, mstar)
+        R_scaling = self.obs_rad_eff / R0_pred
+
         # Iterate over each time-step until when the sgrb occurred
         for ii, zz in enumerate(self.redz):
 
@@ -210,8 +216,9 @@ class GalaxyHistory:
             else:
                 dt = self.times[ii] - self.times[ii-1]
 
+
             # Calculate exponential disk-profile (normalized to 1), used for both gas and SFR radial distributions since the gas follows the SFR
-            disk_prof, Rscale_baryons[ii] = baryons.sfr_rad_dist(self.rads, mstar)
+            disk_prof, Rscale_baryons[ii] = baryons.sfr_rad_dist(self.rads, mstar, scaling=R_scaling)
 
             # Mass profile of stars formed in this timestep
             mass_sfr_prof[ii, :] = sfr * dt * disk_prof

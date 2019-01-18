@@ -14,6 +14,7 @@ from galpy.orbit import Orbit as gp_orbit
 from kickIT.galaxy_history import cosmology
 from . import utils
 
+VERBOSE=True
 
 class Systems:
     """
@@ -309,7 +310,8 @@ class Systems:
                 # write in NaNs here
                 continue
 
-            print('  Particle {0:d}:'.format(idx))
+            if VERBOSE==True:
+                print('  Particle {0:d}:'.format(idx))
 
             # if the system survived the supernova, jot down its inspiral time
             Tinsp = self.Tinsp[idx]
@@ -319,7 +321,7 @@ class Systems:
 
             # now, loop through all redshifts and evolving potential starting at timestep t0
             tt=0
-            while tt < len(gal.times[t0:]-1):
+            while tt < (len(gal.times[t0:])-1):
 
                 # first, transform the post-SN systemic velocity 
                 if tt==0:
@@ -346,7 +348,8 @@ class Systems:
                     # set dt to run until the system merges
                     dt = Tinsp-gal.times[tt]
 
-                    print('    merger occurred at z={0:0.2f}'.format(self.merger_redz))
+                    if VERBOSE==True:
+                        print('    merger occurred at z={0:0.2f}'.format(self.merger_redz))
                     break
 
 
@@ -357,8 +360,9 @@ class Systems:
                 orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), T*u.rad])
                 orb.integrate(ts, gal.full_potentials[:(t0+1)], method=int_method)
 
-                if tt == len(gal.times[t0:]-1):
-                    print('    system did not merge prior to the sGRB...')
+                if tt == (len(gal.times[t0:])-2):
+                    if VERBOSE==True:
+                        print('    system did not merge prior to the sGRB...')
 
                 tt += 1
 
@@ -391,7 +395,7 @@ class Systems:
 
             self.R_offset_proj[idx] = np.sqrt(rot_vec[0]**2 + rot_vec[1]**2)
 
-            print('    offset: {0:0.2f} kpc (proj: {1:0.2f} kpc)'.format(self.R_offset[idx]*u.cm.to(u.kpc), self.R_offset_proj[idx]*u.cm.to(u.kpc)))
+            print('    offset: {0:0.2f} kpc (proj: {1:0.2f} kpc)\n'.format(self.R_offset[idx]*u.cm.to(u.kpc), self.R_offset_proj[idx]*u.cm.to(u.kpc)))
 
 
 

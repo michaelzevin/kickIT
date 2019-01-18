@@ -28,7 +28,8 @@ class NELSON_1507_03999:
     bb = 0.226  # ±0.022
 
 
-def sfr_disk_rad(mstars):
+# FIXME: we need to scale the sfr_disk_rad by the the difference between the predicted Rs today and the observed effective radius
+def sfr_disk_rad(mstars, scaling):
     """Characteristic radii of star-forming disks.
 
     See: Nelson+2015, 1507.03999, Eq.5
@@ -37,13 +38,16 @@ def sfr_disk_rad(mstars):
     rs = 10**NELSON_1507_03999.aa * KPC
     rs *= np.power(mm, NELSON_1507_03999.bb)
 
+    # scale the scale radius by the difference between the scale 
+    rs *= scaling
+
     return rs
 
 
-def sfr_rad_dist(rads, mstar):
+def sfr_rad_dist(rads, mstar, scaling=1.0):
     """SFR radial distributions assuming exponential disk distributions.
     """
-    rs = sfr_disk_rad(mstar)
+    rs = sfr_disk_rad(mstar, scaling)
 
     # Density of star-formation distribution
     sfr_dens = np.exp(-rads/rs)
