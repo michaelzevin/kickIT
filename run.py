@@ -45,7 +45,7 @@ def main(grb_props, Nsys, t0):
     """
     start = time.time()
 
-    popsynth_path = '/Users/michaelzevin/research/sgrb/example_bns.dat'
+    popsynth_path = './data/example_bns.dat'
 
     # get galaxy information
     gal = galaxy_history.GalaxyHistory(\
