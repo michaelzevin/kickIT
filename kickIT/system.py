@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+import time
+
 import astropy.units as u
 import astropy.constants as C
 
@@ -267,7 +269,7 @@ class Systems:
 
 
 
-    def evolve(self, gal, t0, int_method='odeint'):
+    def evolve(self, gal, t0, int_method='odeint', ro=8, vo=220):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
@@ -283,11 +285,7 @@ class Systems:
         # initialize cosmology
         cosmo = cosmology.Cosmology()
 
-        # save galpy's 'natural' units, which are specified in the galpyrc file (integration points are returned in natural units)
-        r0=8        # kpc
-        v0=220      # km/s
-
-        # set new field to notify the redshift of the system if merged before the end of the integration
+        # set new field to note the redshift of the system if it merged before the end of the integration
         self.merger_redz = np.nan*np.ones(self.Nsys)
 
         # create new fields for offset and projected offset
@@ -298,9 +296,9 @@ class Systems:
         self.x_final = np.nan*np.ones(self.Nsys)
         self.y_final = np.nan*np.ones(self.Nsys)
         self.z_final = np.nan*np.ones(self.Nsys)
-        self.vx_final = np.nan*np.ones(self.Nsys)
-        self.vy_final = np.nan*np.ones(self.Nsys)
-        self.vz_final = np.nan*np.ones(self.Nsys)
+        self.Vx_final = np.nan*np.ones(self.Nsys)
+        self.Vy_final = np.nan*np.ones(self.Nsys)
+        self.Vz_final = np.nan*np.ones(self.Nsys)
 
         # loop over all tracers (should parallelize this...)
         for idx in np.arange(self.Nsys):
@@ -310,81 +308,134 @@ class Systems:
                 # write in NaNs here
                 continue
 
-            if VERBOSE==True:
+            if VERBOSE:
                 print('  Particle {0:d}:'.format(idx))
+
+            # start the clock
+            start_time = time.time()
 
             # if the system survived the supernova, jot down its inspiral time
             Tinsp = self.Tinsp[idx]
+            if gal.interp:
+                Tinsp = utils.Tcgs_to_nat(Tinsp)
 
             # keep track of the time that has elapsed
             T_elapsed = 0
 
-            # now, loop through all redshifts and evolving potential starting at timestep t0
-            tt=0
-            while tt < (len(gal.times[t0:])-1):
 
-                # first, transform the post-SN systemic velocity 
-                if tt==0:
+            ### MAIN LOOP ### 
+            # through all redshifts and evolving potential starting at timestep t0
+            tt=t0
+
+            while tt < (len(gal.times)-1):
+
+                # first, transform the post-SN systemic velocity into cylindrical coordinates
+                if tt==t0:
                     # by construction, the systems start in the galactic plane, at x=R, y=0, and therefore phi=0
-                    R,T,Z,vR,vT,vZ = utils.cartesian_to_cylindrical(self.R[idx],0.0,0.0,self.Vpx[idx],self.Vpy[idx],self.Vpz[idx])
+                    # also, galpy's orbit integrator takes in vT = R*vPhi
+                    R,Phi,Z,vR,vPhi,vZ = utils.cartesian_to_cylindrical(self.R[idx],0.0,0.0,self.Vpx[idx],self.Vpy[idx],self.Vpz[idx])
+                    vT = R*vPhi
+                    if gal.interp:
+                        R,vR,vT,Z,vZ,Phi = utils.orbit_cgs_to_nat(R,vR,vT,Z,vZ,Phi)
+                        
                 else:
-                    # extract the orbital properties at the end of the previous integration (note that galpy output is [r,vR,vT,Z,vZ,T])
-                    R,vR,vT,Z,vZ,T = orb.getOrbit()[-1]
-                    # convert from galpy's 'natural' units to cgs
-                    R = R * r0 * u.kpc.to(u.cm)
-                    vR = vR * v0 * u.km.to(u.cm)
-                    vT = vT * v0 * u.km.to(u.cm)
-                    Z = Z * r0 * u.kpc.to(u.cm)
-                    vZ = vZ * v0 * u.km.to(u.cm)
-                    T = T % (2*np.pi)
+                    # extract the orbital properties at the end of the previous integration (note that galpy output is [r,vR,vT,Z,vZ,T] and already in natural units)
+                    R,vR,vT,Z,vZ,Phi = orb.getOrbit()[-1]
+                    Phi = Phi % (2*np.pi)
+                    if not gal.interp:
+                        # convert from galpy's 'natural' units to cgs
+                        R,vR,vT,Z,vZ,Phi = orbit_nat_to_cgs(R,vR,vT,Z,vZ,Phi)
         
                 # record the amount of time that passes in this step
                 # compare the total time passed to the inspiral time of the system
-                dt = gal.times[tt+1]-gal.times[tt]
-                T_elapsed += dt
-                if T_elapsed > Tinsp:
-                    # store redshift of merger
-                    self.merger_redz = cosmo.tage_to_z(gal.times[tt]+Tinsp)
-                    # set dt to run until the system merges
-                    dt = Tinsp-gal.times[tt]
 
-                    if VERBOSE==True:
-                        print('    merger occurred at z={0:0.2f}'.format(self.merger_redz))
+                dt = gal.times[tt+1]-gal.times[tt]
+                if gal.interp:
+                    dt = utils.Tcgs_to_nat(dt)
+
+                # see if the merger occurred during this step
+                if (T_elapsed+dt) > Tinsp:
+
+                    # only evolve until merger
+                    dt = (Tinsp - T_elapsed)
+
+                    # get timesteps for this integration (set to 1000 steps for now)
+                    if gal.interp:
+                        ts = np.linspace(0,dt,1000)
+                    else:
+                        ts = np.linspace(0*u.s,dt*u.s,1000)
+
+                    # initialize the orbit and integrate, store redshift of merger
+                    if gal.interp:
+                        orb = gp_orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
+                        orb.integrate(ts, gal.interpolated_potentials[tt], method=int_method)
+                        age = utils.Tcgs_to_nat(gal.times[t0])+Tinsp
+                        self.merger_redz = cosmo.tage_to_z(utils.Tnat_to_cgs(age))
+                    else:
+                        orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
+                        orb.integrate(ts, gal.full_potentials[:(tt+1)], method=int_method)
+                        age = gal.times[t0]+Tinsp
+                        self.merger_redz = cosmo.tage_to_z(age)
+
+                    stop_time = time.time()
+
+                    if VERBOSE:
+                        print('    merger occurred at z={0:0.2f}, integration took {1:0.2f}s'.format(self.merger_redz, (stop_time-start_time)))
+
                     break
 
 
+                # if it didn't merge, evolve until the next timestep
+                T_elapsed += dt
+
                 # get timesteps for this integration (set to 1000 steps for now)
-                ts = np.linspace(0*u.s,dt*u.s,1000)
+                if gal.interp:
+                    ts = np.linspace(0,dt,1000)
+                else:
+                    ts = np.linspace(0*u.s,dt*u.s,1000)
 
                 # initialize the orbit and integrate
-                orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), T*u.rad])
-                orb.integrate(ts, gal.full_potentials[:(t0+1)], method=int_method)
+                if gal.interp:
+                    orb = gp_orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
+                    orb.integrate(ts, gal.interpolated_potentials[tt], method=int_method)
+                else:
+                    orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
+                    orb.integrate(ts, gal.full_potentials[:(tt+1)], method=int_method)
 
-                if tt == (len(gal.times[t0:])-2):
-                    if VERBOSE==True:
-                        print('    system did not merge prior to the sGRB...')
+                # if it evolved until the end and did not merge, end the integration
+                if tt == (len(gal.times)-2):
+                    stop_time = time.time()
+                    time_evolved = gal.times[(tt+1)]-gal.times[t0]
+
+                    if VERBOSE:
+                        print('    system evolved for {0:0.2e} Myr and did not merge prior to the sGRB, integration took {1:0.2f}s'.format(time_evolved*u.s.to(u.Myr), (stop_time-start_time)))
 
                 tt += 1
 
 
             # once the system has either merged or integrated until the time of the sGRB, save offset
-            R_final = orb.getOrbit()[-1][0] * r0 * u.kpc.to(u.cm)
-            vR_final = orb.getOrbit()[-1][1] * v0 * u.km.to(u.cm)
-            vT_final = orb.getOrbit()[-1][2] * v0 * u.km.to(u.cm)
-            Z_final = orb.getOrbit()[-1][3] * r0 * u.kpc.to(u.cm)
-            vZ_final = orb.getOrbit()[-1][4] * v0 * u.km.to(u.cm)
-            T_final = orb.getOrbit()[-1][5] % (2*np.pi)
+            # NOTE: galpy's code spits things out in natural units no matter what you input!!!
+            R_final = orb.getOrbit()[-1][0]
+            vR_final = orb.getOrbit()[-1][1]
+            vT_final = orb.getOrbit()[-1][2]
+            Z_final = orb.getOrbit()[-1][3]
+            vZ_final = orb.getOrbit()[-1][4]
+            Phi_final = orb.getOrbit()[-1][5] % (2*np.pi)
 
-            self.R_offset[idx] = R_final
+            R_final, vR_final, vT_final, Z_final, vZ_final, Phi_final = utils.orbit_nat_to_cgs(R_final, vR_final, vT_final, Z_final, vZ_final, Phi_final)
+
+            vPhi_final = vT_final / R_final
+
+            self.R_offset[idx] = np.sqrt(R_final**2 + Z_final**2)
 
             # get final positions and velocities in Cartesian coordinates
-            x,y,z,vx,vy,vz = utils.cylindrical_to_cartesian(R_final,T_final,Z_final,vR_final,vT_final,vZ_final)
+            x,y,z,vx,vy,vz = utils.cylindrical_to_cartesian(R_final,Phi_final,Z_final,vR_final,vPhi_final,vZ_final)
             self.x_final[idx] = x
             self.y_final[idx] = y
             self.z_final[idx] = z
-            self.vx_final[idx] = vx
-            self.vy_final[idx] = vy
-            self.vz_final[idx] = vz
+            self.Vx_final[idx] = vx
+            self.Vy_final[idx] = vy
+            self.Vz_final[idx] = vz
 
             # randomly rotate the vectors by Euler rotations to get a mock projected offset, assuming observer is in z-hat direction
             vec = np.atleast_2d([self.x_final[idx],self.y_final[idx],self.z_final[idx]])
