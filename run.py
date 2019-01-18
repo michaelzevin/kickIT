@@ -39,7 +39,7 @@ def parse_commandline():
 
 
 
-def main(grb, Nsys, t0):
+def main(grb_props, Nsys, t0):
     """
     Main function. 
     """
@@ -54,9 +54,14 @@ def main(grb, Nsys, t0):
                         obs_age_stars = float(grb_props['PopAge'] * u.Gyr.to(u.s)),\
                         obs_rad_eff = float(grb_props['r_e'] * u.kpc.to(u.cm)),\
                         obs_gal_sfr = float(grb_props['SFR'] * (u.Msun.to(u.g))/u.yr.to(u.s)),\
+                        disk_profile = 'DoubleExponential',\
+                        z_scale = 0.05,\
+                        interp = True,\
+                        interp_path = '/Users/michaelzevin/research/sgrb/interp_potentials/',\
                         times = None,\
-                        name = str(grb_props['GRB']))
+                        name = grb_props['GRB'].item())
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[t0]))
+
 
     # get sampled properties of tracer particles
     sampled_parameters = sample.sample_parameters(gal, t0=t0, Nsys=Nsys, \
@@ -92,8 +97,6 @@ def main(grb, Nsys, t0):
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))
-
-    import pdb; pdb.set_trace()
 
 
 # MAIN FUNCTINON
