@@ -74,6 +74,7 @@ def main(grb_props, Nsys, t0):
                             R_method='sfr', \
                             samples = popsynth_path)
 
+
     # sample system parameters
     systems = system.Systems(sampled_parameters)
 

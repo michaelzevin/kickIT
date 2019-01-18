@@ -121,10 +121,9 @@ class GalaxyHistory:
 
         # Find time and redshift of SFR peak from stellar-age of galaxy
         time_sfr_peak = self.time_end - self.obs_age_stars
-        redz_sfr_peak = self.cosmo.tage_to_z(time_sfr_peak)
+        redz_sfr_peak = float(self.cosmo.tage_to_z(time_sfr_peak))
         if VERBOSE:
-            print("Time of peak SFR: {:.2f} [Gyr] (z={:.2f})".format(
-                time_sfr_peak/GYR, redz_sfr_peak))
+            print("Time of peak SFR: {:.2f} [Gyr] (z={:.2f})".format(time_sfr_peak/GYR, redz_sfr_peak))
 
         # Assume constant SFR from time of observation, back to SFR peak
         idx = (self.times >= time_sfr_peak)

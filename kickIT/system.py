@@ -79,6 +79,9 @@ class Systems:
             We use Eq 1, 3, 4, and 34: giving Vr, Apost, epost, and (Vsx,Vsy,Vsz) respectively
             Also see Fig 1 in that paper for coordinate system
         """
+
+        print('Implementing the supernova physics...\n')
+
         G = C.G.cgs.value
 
         # Decompose the kick into its cartesian coordinates
@@ -119,6 +122,8 @@ class Systems:
 
         Note: V_He;preSN is the same variable as V_r from Kalogera 1996
         """
+
+        print('Checking if the systems survived the supernovae...\n')
 
         G = C.G.cgs.value
         Mtot_pre = self.Mhe+self.Mcomp
@@ -161,24 +166,42 @@ class Systems:
 
 
 
-    def galactic_velocity(self, gal, t0):
+    def galactic_velocity(self, gal, t0, ro=8, vo=220):
         """
         Calculates the pre-SN galactic velocity for the tracer particles at their initial radius R. 
         """
 
+        print('Calculating the pre-SN galactic velocity...\n')
+
         # Using galpy's vcirc method, we can easily calculate the rotation velocity at any R
         # Note we use the combination of *all* potentials up to the timestep t0
-        Vcirc = gp_vcirc(gal.full_potentials[:(t0+1)], self.R*u.cm)
-        self.Vcirc = Vcirc.to(u.cm/u.s).value
+        if gal.interp:
+            ro_cgs = ro * u.kpc.to(u.cm)
+            vo_cgs = vo * u.km.to(u.cm)
 
-        # Just to have them, calculate the circular velocity of each component as well
-        Vcirc_stars = gp_vcirc(gal.stars_potentials[:(t0+1)], self.R*u.cm)
-        self.Vcirc_stars = Vcirc_stars.to(u.cm/u.s).value
-        Vcirc_gas = gp_vcirc(gal.gas_potentials[:(t0+1)], self.R*u.cm)
-        self.Vcirc_gas = Vcirc_gas.to(u.cm/u.s).value
-        Vcirc_dm = gp_vcirc(gal.dm_potentials[:(t0+1)], self.R*u.cm)
-        self.Vcirc_dm = Vcirc_dm.to(u.cm/u.s).value
+            R_vals = self.R / ro_cgs
+            full_pot = gal.interpolated_potentials[t0]
+            Vcirc = gp_vcirc(full_pot, R_vals)
+
+            Vcirc = Vcirc.value*u.km.to(u.cm)
+            self.Vcirc = Vcirc
+
+        else:
+            R_vals = self.R*u.cm
+            full_pot = gal.full_potentials[:(t0+1)]
+            Vcirc = gp_vcirc(full_pot, R_vals)
+            self.Vcirc = Vcirc.to(u.cm/u.s).value
+
         
+        if not gal.interp:
+        # Just to have them, calculate the circular velocity of each component as well (only do this if we choose not to do the quick interpolation)
+            Vcirc_stars = gp_vcirc(gal.stars_potentials[:(t0+1)], self.R*u.cm)
+            self.Vcirc_stars = Vcirc_stars.to(u.cm/u.s).value
+            Vcirc_gas = gp_vcirc(gal.gas_potentials[:(t0+1)], self.R*u.cm)
+            self.Vcirc_gas = Vcirc_gas.to(u.cm/u.s).value
+            Vcirc_dm = gp_vcirc(gal.dm_potentials[:(t0+1)], self.R*u.cm)
+            self.Vcirc_dm = Vcirc_dm.to(u.cm/u.s).value
+            
 
         # Also, get mass enclosed at each rad by taking cumulative sum of mass profiles
         mass_stars_enclosed = np.cumsum(gal.mass_stars_prof[t0])
@@ -205,6 +228,8 @@ class Systems:
 
         Assume that the systemic velocity post-SN is in the same direction of the pre-SN galactic velocity (+y direction). Then perform Z-axis Euler rotation of SYSphi and Y-axis Euler rotation of SYStheta. 
         """
+
+        print('Transforming systems into the galactic frame of reference..\n')
 
         # create Vsys array (Nsamples x Ndim)
         Vsys_vec = np.transpose([self.Vsx,self.Vsy,self.Vsz])
@@ -236,6 +261,8 @@ class Systems:
         """
         Calculates the GW inspiral time (in seconds) for the systems given their post-SN orbital properties
         """
+
+        print('Calculating inspiral times...\n')
 
         self.Tinsp = np.nan * np.ones(self.Nsys)
 
@@ -370,12 +397,12 @@ class Systems:
                         orb = gp_orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
                         orb.integrate(ts, gal.interpolated_potentials[tt], method=int_method)
                         age = utils.Tcgs_to_nat(gal.times[t0])+Tinsp
-                        self.merger_redz = cosmo.tage_to_z(utils.Tnat_to_cgs(age))
+                        self.merger_redz = float(cosmo.tage_to_z(utils.Tnat_to_cgs(age)))
                     else:
                         orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
                         orb.integrate(ts, gal.full_potentials[:(tt+1)], method=int_method)
                         age = gal.times[t0]+Tinsp
-                        self.merger_redz = cosmo.tage_to_z(age)
+                        self.merger_redz = float(cosmo.tage_to_z(age))
 
                     stop_time = time.time()
 
