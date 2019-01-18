@@ -105,7 +105,7 @@ if __name__ == '__main__':
     args = parse_commandline()
 
     # read sgrb hostprops table as pandas dataframe
-    sgrb_host_properties = pd.read_table('/Users/michaelzevin/research/sgrb/sgrb_hostprops_offsets.txt', delim_whitespace=True, na_values='-', skiprows=12) 
+    sgrb_host_properties = pd.read_table('./data/sgrb_hostprops_offsets.txt', delim_whitespace=True, na_values='-', skiprows=12) 
     grb_props = sgrb_host_properties.loc[sgrb_host_properties['GRB'] == args.grb]
     t0 = args.t0
     Nsys = args.Nsys
