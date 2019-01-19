@@ -39,21 +39,25 @@ class GalaxyHistory:
     """Class for calculating SFR and mass histories of a galaxy, based on limited observations.
     """
 
-    # Redshift at which integration/data-arrays begin
-    REDZ_BEG = 4.0
-    # Number of time-steps between `REDZ_BEG` and redshift zero
-    NUM_TIME_STEPS = 20 #100
-    # Radial points at which to construct the interpolant, in pc
-    NUM_RADS = 30
-    RADS_RANGE = np.array([1e-4, 1e4]) * KPC   # cm
-    # Disk height points at which to construct the interpolant, in pc
-    NUM_HEIGHTS = 10
-    HEIGHTS_RANGE = np.array([0, 1e1]) * KPC   # cm
 
-
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile='RazorThinExponential', z_scale=None, interp=True, interp_path=None, times=None, name=None):
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile='RazorThinExponential', z_scale=None, interp=True, interp_path=None, Tsteps=100, Rgrid=(1e-4,1e4,100), Zgrid=(0,1e1,50), name=None):
         """All input parameters should be in CGS units!
         """
+
+        # Redshift at which integration/data-arrays begin
+        self.REDZ_BEG = 4.0
+
+        # Number of time-steps between `REDZ_BEG` and redshift zero
+        self.NUM_TIME_STEPS = Tsteps
+
+        # Radial points at which to construct the interpolant, in pc
+        self.NUM_RADS = Rgrid
+        self.RADS_RANGE = np.array([1e-4,1e4]) * KPC   # cm
+
+        # Disk height points at which to construct the interpolant, in pc
+        self.NUM_HEIGHTS = Zgrid
+        self.HEIGHTS_RANGE = np.array([0,1e1]) * KPC   # cm
+
         # Initialize cosmology
         cosmo = cosmology.Cosmology()
         self.cosmo = cosmo
@@ -69,18 +73,12 @@ class GalaxyHistory:
         self.interp = interp
         self.name = name
 
-        # Construct sampling times if not provided
-        if times is None:
-            self.time_beg = cosmo.age(self.REDZ_BEG).cgs.value
-            # End time is the time at which the galaxy is observed (calculated from redshift)
-            self.time_end = cosmo.age(self.obs_redz).cgs.value
-            self.time_dur = self.time_end - self.time_beg
-            # times = np.linspace(self.time_beg, self.time_end, self.NUM_TIME_STEPS)  # sec
-            times = np.logspace(*np.log10([self.time_beg, self.time_end]), self.NUM_TIME_STEPS)
-        else:
-            self.time_beg = times[0]
-            self.time_end = times[-1]
-            self.time_dur = times[-1] - times[0]
+        # Construct sampling times
+        self.time_beg = cosmo.age(self.REDZ_BEG).cgs.value
+        # End time is the time at which the galaxy is observed (calculated from redshift)
+        self.time_end = cosmo.age(self.obs_redz).cgs.value
+        self.time_dur = self.time_end - self.time_beg
+        times = np.logspace(*np.log10([self.time_beg, self.time_end]), self.NUM_TIME_STEPS)
         self.times = times
 
         # Calculate array of redshifts corresponding to each `times` value (age of the universe)
@@ -402,7 +400,7 @@ class GalaxyHistory:
 
 
 
-    def calc_interpolated_potentials(self, interp_path=None, ro=8, vo=220):
+    def calc_interpolated_potentials(self, interp_path=None, ro=8, vo=220, multiproc=False):
         """Creates interpolants for combined potentials. 
         First, checks to see if interpolations already exist in directory `interp_path`.
         If the interpolations do not exist in this path, they are generated and saved to this path. 
@@ -412,7 +410,7 @@ class GalaxyHistory:
 
         if interp_path:
             # if interpolation path is provided, see if the interpolated potentials exist
-            pickle_path = interp_path + self.name + '_full_potentials.pkl'
+            pickle_path = interp_path + '/' + self.name + '_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z.pkl'
             if os.path.isfile(pickle_path):
 
                 # read in the pickled file

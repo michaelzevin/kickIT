@@ -30,8 +30,12 @@ def parse_commandline():
     # default information
     parser.add_argument('-V', '--version', action='version', version=__version__)
     parser.add_argument('-g', '--grb', type=str, help="GRB for which we want to perform analysis.")
-    parser.add_argument('-t0', '--t0', type=int, default=0, help="Timestep that the tracer particles are initiated at. Note that this is an integer timestep, which will be used to choose the physical time in the gal.times array. Default is the first timestep (0).")
+    parser.add_argument('-i', '--t0', type=int, default=0, help="Timestep that the tracer particles are initiated at. Note that this is an integer timestep, which will be used to choose the physical time in the gal.times array. Default is the first timestep (0).")
     parser.add_argument('-N', '--Nsys', type=int, default=1, help="Number of systems you wish to run for this particular starting time. Default is 1.")
+    parser.add_argument('-T', '--Tsteps', type=int, default=100, help="Number of discrete time (redshift) bins to evolve systems in. Default is 100.")
+    parser.add_argument('-rg', '--Rgrid', type=int, default=100, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
+    parser.add_argument('-zg', '--Zgrid', type=int, default=50, help="Number of gridpoints for the Z-component of the interpolation model. Default is 50.")
+    parser.add_argument('-ip', '--interp-path', type=str, help="Path to the directory that holds interpolation files. Default is None.")
     args = parser.parse_args()
 
     return args
@@ -39,7 +43,7 @@ def parse_commandline():
 
 
 
-def main(grb_props, Nsys, t0):
+def main(grb_props, Nsys, t0, Tsteps, Rgrid, Zgrid, interp_path):
     """
     Main function. 
     """
@@ -57,8 +61,10 @@ def main(grb_props, Nsys, t0):
                         disk_profile = 'DoubleExponential',\
                         z_scale = 0.05,\
                         interp = True,\
-                        interp_path = '/Users/michaelzevin/research/sgrb/interp_potentials/',\
-                        times = None,\
+                        interp_path = interp_path,\
+                        Tsteps = Tsteps,\
+                        Rgrid = Rgrid,\
+                        Zgrid = Zgrid,\
                         name = grb_props['GRB'].item())
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[t0]))
 
@@ -109,6 +115,10 @@ if __name__ == '__main__':
     grb_props = sgrb_host_properties.loc[sgrb_host_properties['GRB'] == args.grb]
     t0 = args.t0
     Nsys = args.Nsys
+    Tsteps = args.Tsteps
+    Rgrid = args.Rgrid
+    Zgrid = args.Zgrid
+    interp_path = args.interp_path
 
-    main(grb_props, Nsys, t0)
+    main(grb_props, Nsys, t0, Tsteps, Rgrid, Zgrid, interp_path)
 
