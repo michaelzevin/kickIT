@@ -40,7 +40,7 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile='RazorThinExponential', z_scale=None, interp_path=None, Tsteps=100, Rgrid=(1e-4,1e4,100), Zgrid=(0,1e1,50), name=None):
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, name=None):
         """All input parameters should be in CGS units!
         """
 
@@ -69,6 +69,8 @@ class GalaxyHistory:
         self.obs_rad_eff = obs_rad_eff
         self.obs_gal_sfr = obs_gal_sfr
         self.disk_profile = disk_profile
+        self.bulge_profile = bulge_profile
+        self.dm_profile = dm_profile
         self.z_scale = z_scale
         self.name = name
 
@@ -102,9 +104,9 @@ class GalaxyHistory:
         self.calc_potentials_vs_time(method='natural')
 
         # Interpoate the potentials (need to be in natural units)
-        if interp_path:
+        if interp_dirpath:
             self.interp = True
-            self.calc_interpolated_potentials(interp_path)
+            self.calc_interpolated_potentials(interp_dirpath)
 
         return
 
@@ -251,6 +253,8 @@ class GalaxyHistory:
             mass_gas_prof[ii, :] = mgas * disk_prof
 
             # Distribute DM in NFW profile
+            if self.dm_profile not in ['NFW']:
+                raise NameError('DM profile {0:s} not recognized!'.format(self.dm_profile))
             mass_dm_prof[ii, :], Rscale_dm[ii] = halos.nfw_mass_prof(self.rads, mdm, zz, self.cosmo)
 
             # Create interpolations for each profile, with R=0 inserted
@@ -400,27 +404,27 @@ class GalaxyHistory:
 
 
 
-    def calc_interpolated_potentials(self, interp_path=None, ro=8, vo=220, multiproc=False):
+    def calc_interpolated_potentials(self, interp_dirpath=None, ro=8, vo=220, multiproc=False):
         """Creates interpolants for combined potentials. 
-        First, checks to see if interpolations already exist in directory `interp_path`.
+        First, checks to see if interpolations already exist in directory `interp_dirpath`.
         If the interpolations do not exist in this path, they are generated and saved to this path. 
         """
         
         print('Creating interpolation models of galactic potentials at each redshift...\n')
 
-        if interp_path:
+        if interp_dirpath:
             # if interpolation path is provided, see if the interpolated potentials exist
-            pickle_path = interp_path + '/' + self.name + '_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z.pkl'
+            pickle_path = interp_dirpath + '/' + self.name + '_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z.pkl'
             if os.path.isfile(pickle_path):
 
                 # read in the pickled file
-                print('Pickled file with galactic interpolations found at: \n  {0:s}\n    reading in this data...\n'.format(interp_path))
+                print('Pickled file with galactic interpolations found at: \n  {0:s}\n    reading in this data...\n'.format(interp_dirpath))
                 interpolated_potentials = pickle.load(open(pickle_path, 'rb'))
                 self.interpolated_potentials = interpolated_potentials
                 return
 
             else:
-                print('Pickled file with galactic interpolations not found at \n  {0:s}\n    constructing the interpolants...\n'.format(interp_path))
+                print('Pickled file with galactic interpolations not found at \n  {0:s}\n    constructing the interpolants...\n'.format(interp_dirpath))
                 
 
         # construct the interpolants
@@ -450,8 +454,8 @@ class GalaxyHistory:
 
         self.interpolated_potentials = interpolated_potentials
 
-        # if interp_path was provided, dump the interpolations 
-        if interp_path:
+        # if interp_dirpath was provided, dump the interpolations 
+        if interp_dirpath:
             print('\nSaving the inteprolated potentials as pickles to the provided path...\n')
             pickle.dump(interpolated_potentials, open(pickle_path,'wb'))
 

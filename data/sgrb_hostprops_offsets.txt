@@ -1,15 +1,3 @@
-# 1- GRB name
-# 2- z: Redshift
-# 3- Pcc: Probability of chance coincidence (lower value = more likely to be associated based on gal surveys)
-# 4- gal_type: Host galaxy type, (1) Star-forming or (2) Elliptical
-# 5- n: Sersic index
-# 6- r_e: Half-light radius in kpc
-# 7- deltaR: Projected physical offset in kpc from host to burst
-# 8- deltaR_err: 1-sigma uncertainty in offset (1-sided error)
-# 9- log(M*): Stellar mass in units of log(M*/Msol)
-# 10- SFR: Star formation rate in units of Msol/yr. < denotes upper limit.
-# 11- PopAge: Age of the most prominent stellar population in the galaxy (Gyr)
-
 GRB		z	Pcc	 gal_type    	n      r_e	deltaR	deltaR_err	log(M*)		SFR		PopAge
 050509B		0.225	5e-3	 2		5.6    20.98	44.8	11.9		11.6		0.15		3.18
 050709		0.1606	3e-3	 1		1.0    1.8	3.74	0.005		8.8		0.15		0.26

@@ -257,7 +257,7 @@ class Systems:
         
 
 
-    def inspiral_time(self):
+    def inspiral_time(self, Tinsp_max=14):
         """
         Calculates the GW inspiral time (in seconds) for the systems given their post-SN orbital properties
         """
@@ -274,7 +274,6 @@ class Systems:
                 continue
 
             # if system is still bound, calculate the inspiral time using Peters 1964
-            # FIXME: should have some way to pick out systems with inspiral times greater than a Hubble time so we don't have to integrate them
             else:
                 m1 = self.Mcomp[idx] * u.g.to(u.Msun)
                 m2 = self.Mns[idx] * u.g.to(u.Msun)
@@ -284,7 +283,7 @@ class Systems:
                 self.Tinsp[idx] = utils.inspiral_time_peters(a0, e0, m1, m2) * u.Gyr.to(u.s)
 
                 # count the number of systems that merge in more/less than a Hubble time
-                if self.Tinsp[idx] < (14 * u.Gyr.to(u.s)):
+                if self.Tinsp[idx] < (Tinsp_max * u.Gyr.to(u.s)):
                     lt_tH_insp += 1
 
         # return the fraction that merge within a Hubble time
@@ -296,12 +295,12 @@ class Systems:
 
 
 
-    def evolve(self, gal, t0, int_method='odeint', ro=8, vo=220):
+    def evolve(self, gal, t0, int_method='odeint', tdelay_lim=True, ro=8, vo=220):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
             1. The system evolves until the time of the sGRB
-            2. The system merges due to GW emission
+            2. The system merges due to GW emission (if tdelay_lim=True, otherwise will evolve until the time of the sgrb)
 
         Each system will evolve through a series of galactic potentials specified in distinct redshift bins in the 'gal' class
 
@@ -381,7 +380,8 @@ class Systems:
                     dt = utils.Tcgs_to_nat(dt)
 
                 # see if the merger occurred during this step
-                if (T_elapsed+dt) > Tinsp:
+                # note that if tdelay_lim=False, it will skip this part
+                if ((T_elapsed+dt) > Tinsp and tdelay_lim==True):
 
                     # only evolve until merger
                     dt = (Tinsp - T_elapsed)
