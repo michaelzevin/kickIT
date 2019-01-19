@@ -40,7 +40,7 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile='RazorThinExponential', z_scale=None, interp=True, interp_path=None, Tsteps=100, Rgrid=(1e-4,1e4,100), Zgrid=(0,1e1,50), name=None):
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile='RazorThinExponential', z_scale=None, interp_path=None, Tsteps=100, Rgrid=(1e-4,1e4,100), Zgrid=(0,1e1,50), name=None):
         """All input parameters should be in CGS units!
         """
 
@@ -70,7 +70,6 @@ class GalaxyHistory:
         self.obs_gal_sfr = obs_gal_sfr
         self.disk_profile = disk_profile
         self.z_scale = z_scale
-        self.interp = interp
         self.name = name
 
         # Construct sampling times
@@ -103,7 +102,8 @@ class GalaxyHistory:
         self.calc_potentials_vs_time(method='natural')
 
         # Interpoate the potentials (need to be in natural units)
-        if interp == True:
+        if interp_path:
+            self.interp = True
             self.calc_interpolated_potentials(interp_path)
 
         return

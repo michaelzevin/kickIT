@@ -60,7 +60,6 @@ def main(grb_props, Nsys, t0, Tsteps, Rgrid, Zgrid, interp_path):
                         obs_gal_sfr = float(grb_props['SFR'] * (u.Msun.to(u.g))/u.yr.to(u.s)),\
                         disk_profile = 'DoubleExponential',\
                         z_scale = 0.05,\
-                        interp = True,\
                         interp_path = interp_path,\
                         Tsteps = Tsteps,\
                         Rgrid = Rgrid,\
