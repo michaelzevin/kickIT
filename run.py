@@ -107,7 +107,8 @@ def main(args):
                         Tsteps = args.Tsteps,\
                         Rgrid = args.Rgrid,\
                         Zgrid = args.Zgrid,\
-                        name = grb_props['GRB'].item())
+                        name = grb_props['GRB'].item(),\
+                        multiproc = args.multiproc)
 
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[args.t0]))
 
@@ -153,7 +154,7 @@ def main(args):
     tH_inspiral_fraction = systems.inspiral_time()
     
     # do evolution of each tracer particle (should parallelize this)
-    systems.evolve(gal, args.t0, int_method='odeint')
+    systems.evolve(gal, args.t0, multiproc=args.multiproc, verbose=False)
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))

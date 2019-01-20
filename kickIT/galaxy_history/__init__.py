@@ -31,6 +31,10 @@ KPC = 1e3 * PC
 GYR = 1e9 * YR
 GMSOL = 1e9 * MSOL
 
+# Set galpy internal units
+_ro = 8
+_vo = 220
+
 # Import of local modules must come after constants above
 from .. import utils
 from . import baryons, halos, cosmology
@@ -41,7 +45,7 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, name=None):
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, name=None, multiproc=None):
         """All input parameters should be in CGS units!
         """
 
@@ -107,7 +111,7 @@ class GalaxyHistory:
         # Interpoate the potentials (need to be in natural units)
         if interp_dirpath:
             self.interp = True
-            self.calc_interpolated_potentials(interp_dirpath)
+            self.calc_interpolated_potentials(interp_dirpath, multiproc=multiproc)
 
         return
 
@@ -405,7 +409,7 @@ class GalaxyHistory:
 
 
 
-    def calc_interpolated_potentials(self, interp_dirpath=None, ro=8, vo=220, multiproc=None):
+    def calc_interpolated_potentials(self, interp_dirpath=None, ro=_ro, vo=_vo, multiproc=None):
         """Creates interpolants for combined potentials. 
         First, checks to see if interpolations already exist in directory `interp_dirpath`.
         If the interpolations do not exist in this path, they are generated and saved to this path. 
@@ -440,42 +444,39 @@ class GalaxyHistory:
         zs = (*heights, self.NUM_HEIGHTS)
                 
 
+        # combine all the potentials
+        interp_data=[]
+        for idx, pot in enumerate(self.full_potentials_natural):
+            interp_data.append([self.full_potentials_natural[:(idx+1)], logrs, zs])
+
+
         # enable multiprocessing, if specified
         if multiproc:
-
             if multiproc=='max':
                 mp = multiprocessing.cpu_count()
             else:
                 mp = int(multiproc)
 
-            # combine all the potentials
-            combined_potentials=[]
-            for idx, pot in enumerate(self.full_potentials_natural):
-                combined_potentials.append(self.full_potentials_natural[:(idx+1)])
-
-            def mp_interp(pot, rgrid=logrs, zgrid=zs, ro=ro, vo=vo):
-                ip = interpRZPotential(pot, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
-                return ip
-
             p = multiprocessing.Pool(mp)
+
+            start = time.time()
+            print('Parallelizing interpolations over {0:d} cores...\n'.format(mp))
+            interpolated_potentials = p.map(interp, interp_data)
+            stop = time.time()
+            print('   finished! It took {0:0.2f}s\n'.format(stop-start))
             
-            interpolated_potentials = p.map(mp_interp, combined_potentials)    
-
-
-
 
         # otherwise, do this in serial
         else:
-
+            print('Interpolating potentials in serial...\n')
             interpolated_potentials=[]
-            for ii, zz in enumerate(self.redz):
-                potential = self.full_potentials_natural[:(ii+1)]
+            for ii, data in enumerate(interp_data):
 
                 start = time.time()
-                ip = interpRZPotential(potential, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
+                ip = interp(data)
                 end = time.time()
                 if VERBOSE == True:
-                    print('   interpolated potential for step {0:d} (z={1:0.2f}) created in {2:0.2f}s...'.format(ii,zz,end-start))
+                    print('   interpolated potential for step {0:d} (z={1:0.2f}) created in {2:0.2f}s...'.format(ii,self.redz[ii],end-start))
 
                 interpolated_potentials.append(ip)
 
@@ -492,3 +493,13 @@ class GalaxyHistory:
         
                 
                 
+# define interpolating function
+def interp(interp_data, ro=_ro, vo=_vo):
+    pot = interp_data[0]
+    logrs = interp_data[1]
+    zs = interp_data[2]
+
+    ip = interpRZPotential(pot, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=8, vo=220)
+    return ip
+
+
