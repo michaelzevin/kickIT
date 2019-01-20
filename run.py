@@ -32,7 +32,7 @@ def parse_commandline():
     parser.add_argument('-g', '--grb', type=str, help="GRB for which we want to perform analysis.")
     parser.add_argument('-i', '--t0', type=int, default=0, help="Timestep that the tracer particles are initiated at. Note that this is an integer timestep, which will be used to choose the physical time in the gal.times array. Default is the first timestep (0).")
     parser.add_argument('-N', '--Nsys', type=int, default=1, help="Number of systems you wish to run for this particular starting time. Default is 1.")
-    parser.add_argument('-mp', '--multiproc', type=int, default=None, help="If specified, will parallelize over the number of cores provided as an argument. Default is None.")
+    parser.add_argument('-mp', '--multiproc', type=str, default=None, help="If specified, will parallelize over the number of cores provided as an argument. Can also use the string 'max' to parallelize over all available cores. Default is None.")
 
     # defining grid properties
     parser.add_argument('-T', '--Tsteps', type=int, default=100, help="Number of discrete time (redshift) bins to evolve systems in. Default is 100.")

@@ -10,6 +10,7 @@ import pickle
 import time
 import pandas as pd
 from scipy.interpolate import interp1d
+import multiprocessing
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import astropy as ap
@@ -404,10 +405,11 @@ class GalaxyHistory:
 
 
 
-    def calc_interpolated_potentials(self, interp_dirpath=None, ro=8, vo=220, multiproc=False):
+    def calc_interpolated_potentials(self, interp_dirpath=None, ro=8, vo=220, multiproc=None):
         """Creates interpolants for combined potentials. 
         First, checks to see if interpolations already exist in directory `interp_dirpath`.
         If the interpolations do not exist in this path, they are generated and saved to this path. 
+        To implement multiprocessing, specify an int for the argument 'multiproc'
         """
         
         print('Creating interpolation models of galactic potentials at each redshift...\n')
@@ -427,29 +429,56 @@ class GalaxyHistory:
                 print('Pickled file with galactic interpolations not found at \n  {0:s}\n    constructing the interpolants...\n'.format(interp_dirpath))
                 
 
-        # construct the interpolants
-        interpolated_potentials=[]
+        # convert Rs and Zs to natural units, calculate the grid
+        ro_cgs = ro * u.kpc.to(u.cm)
+        vo_cgs = vo * u.km.to(u.cm)
+        rads = self.RADS_RANGE / ro_cgs
+        heights = self.HEIGHTS_RANGE / ro_cgs
+        
+        rs = (*rads, self.NUM_RADS)
+        logrs = (*np.log10(rads), self.NUM_RADS)
+        zs = (*heights, self.NUM_HEIGHTS)
+                
 
-        for ii, zz in enumerate(self.redz):
-            potential = self.full_potentials_natural[:(ii+1)]
+        # enable multiprocessing, if specified
+        if multiproc:
 
-            # convert Rs and Zs to natural units
-            ro_cgs = ro * u.kpc.to(u.cm)
-            vo_cgs = vo * u.km.to(u.cm)
-            rads = self.RADS_RANGE / ro_cgs
-            heights = self.HEIGHTS_RANGE / ro_cgs
+            if multiproc=='max':
+                mp = multiprocessing.cpu_count()
+            else:
+                mp = int(multiproc)
+
+            # combine all the potentials
+            combined_potentials=[]
+            for idx, pot in enumerate(self.full_potentials_natural):
+                combined_potentials.append(self.full_potentials_natural[:(idx+1)])
+
+            def mp_interp(pot, rgrid=logrs, zgrid=zs, ro=ro, vo=vo):
+                ip = interpRZPotential(pot, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
+                return ip
+
+            p = multiprocessing.Pool(mp)
             
-            rs = (*rads, self.NUM_RADS)
-            logrs = (*np.log10(rads), self.NUM_RADS)
-            zs = (*heights, self.NUM_HEIGHTS)
-            
-            start = time.time()
-            ip = interpRZPotential(potential, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
-            end = time.time()
-            if VERBOSE == True:
-                print('   interpolated potential for step {0:d} (z={1:0.2f}) created in {2:0.2f}s...'.format(ii,zz,end-start))
+            interpolated_potentials = p.map(mp_interp, combined_potentials)    
 
-            interpolated_potentials.append(ip)
+
+
+
+        # otherwise, do this in serial
+        else:
+
+            interpolated_potentials=[]
+            for ii, zz in enumerate(self.redz):
+                potential = self.full_potentials_natural[:(ii+1)]
+
+                start = time.time()
+                ip = interpRZPotential(potential, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
+                end = time.time()
+                if VERBOSE == True:
+                    print('   interpolated potential for step {0:d} (z={1:0.2f}) created in {2:0.2f}s...'.format(ii,zz,end-start))
+
+                interpolated_potentials.append(ip)
+
 
 
         self.interpolated_potentials = interpolated_potentials
