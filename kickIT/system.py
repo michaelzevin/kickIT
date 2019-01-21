@@ -406,7 +406,7 @@ class Systems:
 
 
 
-def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=180):
+def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=60):
     """Function for integrating orbits. 
 
     If tdelay_lim==True, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
