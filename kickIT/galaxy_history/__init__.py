@@ -15,7 +15,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import astropy as ap
 import astropy.units as u
-import astropy.constants as C  # noqa
+import astropy.constants as C
 
 from galpy.potential import RazorThinExponentialDiskPotential, DoubleExponentialDiskPotential, NFWPotential
 from galpy.potential import interpRZPotential
@@ -421,7 +421,7 @@ class GalaxyHistory:
 
         if interp_dirpath:
             # if interpolation path is provided, see if the interpolated potentials exist
-            pickle_path = interp_dirpath + '/' + self.name + '_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z.pkl'
+            pickle_path = interp_dirpath + '/' + self.name + '_' + str(self.Tstep) + '_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z.pkl'
             if os.path.isfile(pickle_path):
 
                 # read in the pickled file
