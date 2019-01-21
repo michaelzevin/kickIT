@@ -119,6 +119,10 @@ def main(args):
                         multiproc = args.multiproc,\
                         verbose = args.verbose)
 
+    # make sure the timestep isn't larger than the number of redshift bins (note that the last redshift value has no bin)
+    if args.t0 >= (len(gal.redz)-1):
+        raise ValueError("Timestep index {0:d} is greater than the number of non-zero redshift bins ({1:d})".format(args.t0, (len(gal.redz)-1)))
+
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[args.t0]))
 
 
