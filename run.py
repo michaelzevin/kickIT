@@ -29,6 +29,7 @@ def parse_commandline():
 
     # default information
     parser.add_argument('-V', '--version', action='version', version=__version__)
+    parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-g', '--grb', type=str, help="GRB for which we want to perform analysis.")
     parser.add_argument('-i', '--t0', type=int, default=0, help="Timestep that the tracer particles are initiated at. Note that this is an integer timestep, which will be used to choose the physical time in the gal.times array. Default is the first timestep (0).")
     parser.add_argument('-N', '--Nsys', type=int, default=1, help="Number of systems you wish to run for this particular starting time. Default is 1.")
@@ -43,6 +44,7 @@ def parse_commandline():
     parser.add_argument('--interp-dirpath', type=str, help="Path to the directory that holds interpolation files. Default is None.")
     parser.add_argument('--sgrb-path', type=str, default='./data/sgrb_hostprops_offsets.txt', help="Path to the table with sGRB host galaxy information. Default is './data/sgrb_hostprops_offsets.txt'.")
     parser.add_argument('--samples-path', type=str, default='./data/example_bns.dat', help="Path to the samples from population synthesis for generating the initial population of binaries. Default is './data/example_bns.dat'.")
+    parser.add_argument('--outpath', type=str, default='./output.hdf', help="Path to the output hdf file. File has key names tracers. Default is './output.hdf'.")
 
     # galaxy arguments
     parser.add_argument('--disk-profile', type=str, default='DoubleExponential', help="Profile for the galactic disk, named according to Galpy potentials. Default is 'DoubleExponential'.")
@@ -108,7 +110,8 @@ def main(args):
                         Rgrid = args.Rgrid,\
                         Zgrid = args.Zgrid,\
                         name = grb_props['GRB'].item(),\
-                        multiproc = args.multiproc)
+                        multiproc = args.multiproc,\
+                        verbose = args.verbose)
 
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[args.t0]))
 
@@ -132,11 +135,12 @@ def main(args):
                             Vkick_method=args.Vkick_method, \
                             R_method=args.R_method, \
                             params_dict = params_dict, \
-                            samples = args.samples_path)
+                            samples = args.samples_path, \
+                            verbose = args.verbose)
 
 
     # sample system parameters
-    systems = system.Systems(sampled_parameters)
+    systems = system.Systems(sampled_parameters, verbose=args.verbose)
 
     # implement the supernova
     systems.SN()
@@ -153,8 +157,11 @@ def main(args):
     # calculate the inspiral time for systems that survived
     tH_inspiral_fraction = systems.inspiral_time()
     
-    # do evolution of each tracer particle (should parallelize this)
-    systems.evolve(gal, args.t0, multiproc=args.multiproc, verbose=False)
+    # do evolution of each tracer particle
+    systems.evolve(gal, args.t0, multiproc=args.multiproc)
+
+    # write data to output file
+    systems.write(args.outpath)
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))

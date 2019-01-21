@@ -17,8 +17,6 @@ from galpy.orbit import Orbit as gp_orbit
 from kickIT.galaxy_history import cosmology
 from . import utils
 
-VERBOSE=True
-
 class Systems:
     """
     Places system in orbit in the galaxy model. 
@@ -30,7 +28,9 @@ class Systems:
     System starts on a circular orbit in the r-phi (x-y) plane, on the x-axis (phi=0) and moving in the positive y direction. 
     Galaxy projection taken account when determining radial offset at merger. 
     """
-    def __init__(self, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None):
+    def __init__(self, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None, verbose=False):
+
+        self.VERBOSE = verbose
 
         # read in the sampled parameters
         self.Mns = np.asarray(sampled_parameters['Mns'])
@@ -297,7 +297,7 @@ class Systems:
 
     
 
-    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, verbose=False):
+    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
@@ -313,7 +313,7 @@ class Systems:
         # get the pertinent data for the evolution function
         systems_info = []
         for idx in np.arange(self.Nsys):
-            systems_info.append([idx,self.SNsurvive[idx],self.Tinsp[idx],self.R[idx],self.Vpx[idx],self.Vpy[idx],self.Vpz[idx], gal.interp, gal.times, gal.interpolated_potentials, gal.full_potentials, t0, verbose])
+            systems_info.append([idx,self.SNsurvive[idx],self.Tinsp[idx],self.R[idx],self.Vpx[idx],self.Vpy[idx],self.Vpz[idx], gal.interp, gal.times, gal.interpolated_potentials, gal.full_potentials, t0, self.VERBOSE])
 
         # enable multiprocessing, if specifed
         if multiproc:
@@ -373,12 +373,36 @@ class Systems:
         self.Vy_final = np.asarray(vy_finals)
         self.Vz_final = np.asarray(vz_finals)
 
+        return
+
             
 
 
+    def write(self, outpath):
+        """Write data as hdf file to specified outpath.
+        """
+
+        print("Writing data at path '{0:s}'...".format(outpath))
+
+        tracers = pd.DataFrame()
+        for attr, values in self.__dict__.items():
+            if attr != 'VERBOSE':
+                tracers[attr] = values
+
+        tracers.to_hdf(outpath, key='tracers')
+            
+        return
 
 
-def integrate_orbits(system, int_method='odeint', tdelay_lim=True):
+
+
+def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=300):
+    """Function for integrating orbits. 
+
+    If tdelay_lim==True, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
+    
+    t_max will end integration if t_int > t_max.
+    """
 
     start_time = time.time()
 
@@ -411,9 +435,6 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True):
             FINISHED_EVOLVING=True
             return x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj
 
-
-        if VERBOSE:
-            print('  Particle {0:d}:'.format(idx))
 
         # if the system survived the supernova, jot down its inspiral time
         if interp:
@@ -479,7 +500,7 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True):
 
                 stop_time = time.time()
                 if VERBOSE:
-                    print('    merger occurred at z={0:0.2f}, integration took {1:0.2f}s'.format(merger_redz, (stop_time-start_time)))
+                    print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}, integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
 
 
                 FINISHED_EVOLVING = True
@@ -510,10 +531,21 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True):
 
                 stop_time = time.time()
                 if VERBOSE:
-                    print('    system evolved for {0:0.2e} Myr and did not merge prior to the sGRB, integration took {1:0.2f}s'.format(time_evolved*u.s.to(u.Myr), (stop_time-start_time)))
+                    print('  Tracer {0:d}:\n    system evolved for {1:0.2e} Myr and did not merge prior to the sGRB, integration took {2:0.2f}s'.format(idx, time_evolved*u.s.to(u.Myr), (stop_time-start_time)))
 
                 FINISHED_EVOLVING = True
                 break
+
+
+            # if integration time surpasses t_max, end
+            if (time.time()-start_time) > t_max:
+                merger_redz=R_offset=R_offset_proj = np.nan
+                x_final=y_final=z_final=vx_final=vy_final=vz_final = np.nan
+
+                FINISHED_EVOLVING=True
+
+                print('  Tracer {0:d}:\n    system integrated for longer than t_max={1:0.2f}s, integration terminated'.format(idx, t_max))
+                return x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj
 
 
             tt += 1

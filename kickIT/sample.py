@@ -10,7 +10,7 @@ from astropy.table import Table
 from . import galaxy_history
 
 
-def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian', Mhe_method='uniform', Apre_method='uniform', epre_method='circularized', Vkick_method='maxwellian', R_method='sfr', params_dict=None, samples=None):
+def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian', Mhe_method='uniform', Apre_method='uniform', epre_method='circularized', Vkick_method='maxwellian', R_method='sfr', params_dict=None, samples=None, verbose=False):
     """
     Calls all the sampling functions defined below. 
     Returns a dataframe with the sampled parameters. 
@@ -38,6 +38,10 @@ def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='ga
     bin_params['epre'] = sample_epre(Nsys, method=epre_method, samples=popsynth_data)
     bin_params['Vkick'] = sample_Vkick(Nsys, Vmin=params_dict['Vkick_min'], Vmax=params_dict['Vkick_max'], method=Vkick_method, sigma=params_dict['Vkick_sigma'], samples=popsynth_data)
     bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method, mean=params_dict['R_mean'], samples=popsynth_data)
+
+    if verbose:
+        print('Parameters sampled according to the following methods:')
+        print('  Mcomp: {0:s}\n  Mns: {1:s}\n  Mhe: {2:s}\n  Apre: {3:s}\n  epre: {4:s}\n  Vkick: {5:s}\n  R: {6:s}\n'.format(Mcomp_method,Mns_method,Mhe_method,Apre_method,epre_method,Vkick_method,R_method))
 
 
     return bin_params

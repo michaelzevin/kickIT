@@ -20,8 +20,6 @@ import astropy.constants as C  # noqa
 from galpy.potential import RazorThinExponentialDiskPotential, DoubleExponentialDiskPotential, NFWPotential
 from galpy.potential import interpRZPotential
 
-VERBOSE = True
-
 # Set units here (standard in cgs)
 MSOL = u.M_sun.to(u.g)
 PC = u.pc.to(u.cm)
@@ -45,9 +43,12 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, name=None, multiproc=None):
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, name=None, multiproc=None, verbose=False):
         """All input parameters should be in CGS units!
         """
+
+        # Store if verbose
+        self.VERBOSE = verbose
 
         # Redshift at which integration/data-arrays begin
         self.REDZ_BEG = 4.0
@@ -89,7 +90,7 @@ class GalaxyHistory:
 
         # Calculate array of redshifts corresponding to each `times` value (age of the universe)
         self.redz = cosmo.tage_to_z(self.times)
-        if VERBOSE:
+        if self.VERBOSE:
             textr = np.array([times.min(), times.max()])
             print("Times: {:3d} between [{:.1e}, {:.1e}] Gyr (z={:.1e}, {:.1e})".format(
                 times.size, *textr/GYR, self.redz.max(), self.redz.min()))
@@ -127,7 +128,7 @@ class GalaxyHistory:
         # Find time and redshift of SFR peak from stellar-age of galaxy
         time_sfr_peak = self.time_end - self.obs_age_stars
         redz_sfr_peak = float(self.cosmo.tage_to_z(time_sfr_peak))
-        if VERBOSE:
+        if self.VERBOSE:
             print("Time of peak SFR: {:.2f} [Gyr] (z={:.2f})".format(time_sfr_peak/GYR, redz_sfr_peak))
 
         # Assume constant SFR from time of observation, back to SFR peak
@@ -190,7 +191,7 @@ class GalaxyHistory:
         self.mass_gas = mass_gas
         self.mass_dm = mass_dm
         self.gal_sfr = gal_sfr
-        if VERBOSE:
+        if self.VERBOSE:
             print("")
             finals = np.array([mass_stars[-1], mass_gas[-1], mass_dm[-1]])/MSOL
             print("Final total masses: stars={:.1e}, gas={:.1e}, DM={:.1e} [Msol]".format(
@@ -283,7 +284,7 @@ class GalaxyHistory:
         self.Rscale_dm = Rscale_dm
         
         
-        if VERBOSE:
+        if self.VERBOSE:
             print("")
             names_rads = ['pc', 'kpc', 'Mpc']
             print_rads = np.array([1.0, 1e3, 1e6])*PC
@@ -475,7 +476,7 @@ class GalaxyHistory:
                 start = time.time()
                 ip = interp(data)
                 end = time.time()
-                if VERBOSE == True:
+                if self.VERBOSE == True:
                     print('   interpolated potential for step {0:d} (z={1:0.2f}) created in {2:0.2f}s...'.format(ii,self.redz[ii],end-start))
 
                 interpolated_potentials.append(ip)
@@ -490,7 +491,9 @@ class GalaxyHistory:
             pickle.dump(interpolated_potentials, open(pickle_path,'wb'))
 
         return
-        
+
+
+
                 
                 
 # define interpolating function
@@ -499,7 +502,7 @@ def interp(interp_data, ro=_ro, vo=_vo):
     logrs = interp_data[1]
     zs = interp_data[2]
 
-    ip = interpRZPotential(pot, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=8, vo=220)
+    ip = interpRZPotential(pot, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
     return ip
 
 
