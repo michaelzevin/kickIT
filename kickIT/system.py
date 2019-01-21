@@ -340,8 +340,15 @@ class Systems:
             start = time.time()
             print('Performing the integrations in serial...')
 
-            merger_redzs=R_offsets=R_offset_projs=[]
-            x_finals=y_finals=z_finals=vx_finals=vy_finals=vz_finals=[]
+            merger_redzs = []
+            R_offsets = []
+            R_offset_projs = []
+            x_finals = []
+            y_finals = []
+            z_finals = []
+            vx_finals = []
+            vy_finals = []
+            vz_finals = []
 
             for system in systems_info:
 
@@ -386,7 +393,7 @@ class Systems:
 
         tracers = pd.DataFrame()
         for attr, values in self.__dict__.items():
-            if attr != 'VERBOSE':
+            if attr not in ['VERBOSE','Nsys']:
                 tracers[attr] = values
 
         tracers.to_hdf(outpath, key='tracers')
@@ -428,9 +435,16 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=300):
 
         # first, check that the system servived ther supernova
         if SNsurvive == False:
-            # write in NaNs here for orb and merger_redz
-            merger_redz=R_offset=R_offset_proj = np.nan
-            x_final=y_final=z_final=vx_final=vy_final=vz_final = np.nan
+            # write in NaNs here for orb, offset, and merger_redz
+            merger_redz = np.nan
+            R_offset = np.nan
+            R_offset_proj = np.nan
+            x_final = np.nan
+            y_final = np.nan
+            z_final = np.nan
+            vx_final = np.nan
+            vy_final = np.nan
+            vz_final = np.nan
 
             FINISHED_EVOLVING=True
             return x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj
@@ -539,10 +553,18 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=300):
 
             # if integration time surpasses t_max, end
             if (time.time()-start_time) > t_max:
-                merger_redz=R_offset=R_offset_proj = np.nan
-                x_final=y_final=z_final=vx_final=vy_final=vz_final = np.nan
 
                 FINISHED_EVOLVING=True
+                # write in NaNs here for orb, offset, and merger_redz
+                merger_redz = np.nan
+                R_offset = np.nan
+                R_offset_proj = np.nan
+                x_final = np.nan
+                y_final = np.nan
+                z_final = np.nan
+                vx_final = np.nan
+                vy_final = np.nan
+                vz_final = np.nan
 
                 print('  Tracer {0:d}:\n    system integrated for longer than t_max={1:0.2f}s, integration terminated'.format(idx, t_max))
                 return x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj
