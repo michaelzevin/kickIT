@@ -331,7 +331,7 @@ class Systems:
             results = np.transpose(results)
             x_finals,y_finals,z_finals,vx_finals,vy_finals,vz_finals,merger_redzs,R_offsets,R_offset_projs = results[0],results[1],results[2],results[3],results[4],results[5],results[6],results[7],results[8]
             stop = time.time()
-            print('   finished! It took {0:0.2f}s\n'.format(stop-start))
+            print('Finished! It took {0:0.2f}s\n'.format(stop-start))
 
 
 
@@ -365,7 +365,7 @@ class Systems:
                 vz_finals.append(vz_final)
 
             stop = time.time()
-            print('   finished! It took {0:0.2f}s\n'.format(stop-start))
+            print('Finished! It took {0:0.2f}s\n'.format(stop-start))
 
 
 
@@ -403,7 +403,7 @@ class Systems:
 
 
 
-def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=300):
+def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=180):
     """Function for integrating orbits. 
 
     If tdelay_lim==True, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
@@ -516,7 +516,6 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=300):
                 if VERBOSE:
                     print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}, integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
 
-
                 FINISHED_EVOLVING = True
                 break
 
@@ -540,7 +539,8 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=300):
 
             # if it evolved until the end and did not merge, end the integration
             if tt == (len(times)-2):
-                merger_redz = np.nan
+                # set merger_redz to 0
+                merger_redz = 0
                 time_evolved = times[(tt+1)]-times[t0]
 
                 stop_time = time.time()
@@ -554,20 +554,13 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=300):
             # if integration time surpasses t_max, end
             if (time.time()-start_time) > t_max:
 
-                FINISHED_EVOLVING=True
-                # write in NaNs here for orb, offset, and merger_redz
-                merger_redz = np.nan
-                R_offset = np.nan
-                R_offset_proj = np.nan
-                x_final = np.nan
-                y_final = np.nan
-                z_final = np.nan
-                vx_final = np.nan
-                vy_final = np.nan
-                vz_final = np.nan
+                # set merger_redz to -1 to keep track of these
+                merger_redz = -1
 
-                print('  Tracer {0:d}:\n    system integrated for longer than t_max={1:0.2f}s, integration terminated'.format(idx, t_max))
-                return x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj
+                print('  Tracer {0:d}:\n    system integrated for longer than t_max={1:0.1f}s, integration terminated'.format(idx, t_max))
+
+                FINISHED_EVOLVING=True
+                break
 
 
             tt += 1
