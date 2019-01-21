@@ -421,7 +421,7 @@ class GalaxyHistory:
 
         if interp_dirpath:
             # if interpolation path is provided, see if the interpolated potentials exist
-            pickle_path = interp_dirpath + '/' + self.name + '_' + str(self.Tstep) + '_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z.pkl'
+            pickle_path = interp_dirpath + '/' + self.name + '_' + str(self.NUM_TIME_STEPS) + 'T_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z.pkl'
             if os.path.isfile(pickle_path):
 
                 # read in the pickled file
