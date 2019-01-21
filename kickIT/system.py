@@ -385,18 +385,21 @@ class Systems:
             
 
 
-    def write(self, outpath):
+    def write(self, outdir, t0):
         """Write data as hdf file to specified outpath.
+        Each key represents a timestep at which the particles are initialed in the galaxy model.
         """
 
-        print("Writing data at path '{0:s}'...".format(outpath))
+        print("Writing systems data in directory '{0:s}'...\n".format(outdir))
 
         tracers = pd.DataFrame()
         for attr, values in self.__dict__.items():
             if attr not in ['VERBOSE','Nsys']:
                 tracers[attr] = values
 
-        tracers.to_hdf(outpath, key='tracers')
+        step_key = 'step_{:03d}'.format(t0)
+
+        tracers.to_hdf(outdir+'/tracers.hdf', key=step_key, mode='a')
             
         return
 

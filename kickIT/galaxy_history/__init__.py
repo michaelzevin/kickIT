@@ -494,6 +494,14 @@ class GalaxyHistory:
 
 
 
+
+    def write(self, outdir):
+        """Writes the galaxy data to a pickled file.
+        """
+
+        print("Writing galaxy data in directory '{0:s}'...\n".format(outdir))
+        pickle.dump(self, open(outdir+'/galaxy.pkl', 'wb'))
+        return
                 
                 
 # define interpolating function

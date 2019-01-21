@@ -44,7 +44,7 @@ def parse_commandline():
     parser.add_argument('--interp-dirpath', type=str, help="Path to the directory that holds interpolation files. Default is None.")
     parser.add_argument('--sgrb-path', type=str, default='./data/sgrb_hostprops_offsets.txt', help="Path to the table with sGRB host galaxy information. Default is './data/sgrb_hostprops_offsets.txt'.")
     parser.add_argument('--samples-path', type=str, default='./data/example_bns.dat', help="Path to the samples from population synthesis for generating the initial population of binaries. Default is './data/example_bns.dat'.")
-    parser.add_argument('--outpath', type=str, default='./output.hdf', help="Path to the output hdf file. File has key names tracers. Default is './output.hdf'.")
+    parser.add_argument('--output-dirpath', type=str, default='./output_files/', help="Path to the output hdf file. File has key names tracers. Default is './output_files/'.")
 
     # galaxy arguments
     parser.add_argument('--disk-profile', type=str, default='DoubleExponential', help="Profile for the galactic disk, named according to Galpy potentials. Default is 'DoubleExponential'.")
@@ -89,6 +89,12 @@ def main(args):
     Main function. 
     """
     start = time.time()
+
+    # construct pertinent directories
+    if not os.path.exists(args.interp_dirpath):
+        os.makedirs(args.interp_dirpath)
+    if not os.path.exists(args.output_dirpath):
+        os.makedirs(args.output_dirpath)
 
     # read sgrb hostprops table as pandas dataframe
     sgrb_host_properties = pd.read_table(args.sgrb_path, delim_whitespace=True, na_values='-')
@@ -161,7 +167,8 @@ def main(args):
     systems.evolve(gal, args.t0, multiproc=args.multiproc)
 
     # write data to output file
-    systems.write(args.outpath)
+    systems.write(args.output_dirpath, args.t0)
+    gal.write(args.output_dirpath)
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))
