@@ -26,7 +26,7 @@ def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='ga
         if samples is None:
             raise NameError("No popsynth samples were provided!")
         popsynth_data = pd.read_csv(samples, sep=' ')
-        popsynth_data = popsynth_data.sample(Nsys)
+        popsynth_data = popsynth_data.sample(Nsys, replace=True)
     else:
         popsynth_data = None
 
