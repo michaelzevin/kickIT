@@ -367,16 +367,17 @@ class GalaxyHistory:
 
             if self.disk_profile=='RazorThinExponential':
                 # for a razor-thin disk, the amplitude is mdisk / (2 * pi * rs**2)
-                amp_stars = mstar / (2 * np.pi * rs_baryons**2)
-                amp_gas = mgas / (2 * np.pi * rs_baryons**2)
+                amp_stars = mstar / (4 * np.pi * rs_baryons**2)
+                amp_gas = mgas / (4 * np.pi * rs_baryons**2)
                 # construct the potentials at this timestep
                 stars_potential = RazorThinExponentialDiskPotential(amp=amp_stars, hr=rs_baryons)
                 gas_potential = RazorThinExponentialDiskPotential(amp=amp_gas, hr=rs_baryons)
 
             elif self.disk_profile=='DoubleExponential':
                 # for a double exponential disk, the amplitude is mdisk / (2 * pi * rs**2 * rz)
-                amp_stars = mstar / (2 * np.pi * rs_baryons**2 * (self.z_scale*rs_baryons))
-                amp_gas = mgas / (2 * np.pi * rs_baryons**2 * (self.z_scale*rs_baryons))
+                # NOTE: (2 * pi * rs**2 * 2 * zs) matches the code...
+                amp_stars = mstar / (4 * np.pi * rs_baryons**2 * (self.z_scale*rs_baryons))
+                amp_gas = mgas / (4 * np.pi * rs_baryons**2 * (self.z_scale*rs_baryons))
                 stars_potential = DoubleExponentialDiskPotential(amp=amp_stars, hr=rs_baryons, hz=self.z_scale*rs_baryons)
                 gas_potential = DoubleExponentialDiskPotential(amp=amp_gas, hr=rs_baryons, hz=self.z_scale*rs_baryons)
 

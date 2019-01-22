@@ -241,7 +241,7 @@ def sample_Apre(Nsys, Amin=0.1, Amax=10, method='uniform', mean=None, samples=No
         Apre = np.random.normal(mean, sigma, Nsys)*u.Rsun.to(u.cm)
         # if any of the values for Apre drawn from the gaussian are below the specified lower limit, set their value to Amin
         neg_vals = np.argwhere((Apre-Amin*u.Rsun.to(u.cm)) < 0)
-        Mhe[neg_vals] = Amin*u.Rsun.to(u.cm)
+        Apre[neg_vals] = Amin*u.Rsun.to(u.cm)
         return Mhe
 
 
@@ -254,7 +254,7 @@ def sample_Apre(Nsys, Amin=0.1, Amax=10, method='uniform', mean=None, samples=No
     elif method=='popsynth':
         if 'Apre' not in samples.columns:
             raise NameError("Series '{0:s}' not in popsynth table".format('Apre'))
-        Apre = np.asarray(samples['Mcomp'] * u.Rsun.to(u.cm))
+        Apre = np.asarray(samples['Apre'] * u.Rsun.to(u.cm))
         return Apre
 
 
@@ -341,11 +341,7 @@ def sample_R(Nsys, gal, t0, method='sfr', mean=3, samples=None):
         'popsynth': R is taken from popsynth model at path 'samples'
     """
 
-    if method=='galpy_test':
-        R = np.linspace(0.1,30, Nsys)*u.kpc.to(u.cm)
-        return R
-
-    elif method=='sfr':
+    if method=='sfr':
         # The SFR radial distribution is given by a gamma distribution with k=3, theta=r_s
         # So, p(R) = 1/(2*r_s^3) * R^2 * np.exp(-R/r_s)
         # The CDF of this distribution is P(R) = 1/Gamma(k) * gamma(k, x/theta)
