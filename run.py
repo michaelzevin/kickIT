@@ -4,6 +4,7 @@
 import os
 import pdb
 import argparse
+import pdb
 
 import numpy as np
 import pandas as pd
@@ -76,6 +77,14 @@ def parse_commandline():
     parser.add_argument('--Vkick-min', type=float, default=0.0, help="Minimum velocity for the SN natal kick, in km/s. Default is 0.0.")
     parser.add_argument('--Vkick-max', type=float, default=1000.0, help="Maximum velocity for the SN natal kick, in km/s. Default is 1000.0.")
     parser.add_argument('--R-mean', type=float, default=5.0, help="Mean starting distance from the galactic center, in kpc. Default is 5.0.")
+
+    # integration arguments
+    parser.add_argument('--int-method', type=str, default='odeint', help="Integration method for the orbits. Possible options are 'odeint' or 'leapfrog', until we get the C implementation working. Default is 'odeint'.")
+    parser.add_argument('--Tinsp-lim', action='store_true', help="Indicates whether the integrator should evolve only until the merger rather than all the way until the sGRB. Default=False.")
+    parser.add_argument('--Tmax-int', type=float, default=60.0, help="Amount of time to integrate before terminating, in seconds. Default is 60.0.")
+    parser.add_argument('--Nsteps-per-bin', type=int, default=1000, help="Number of timesteps per redshift bin in the integration. Default is 1000.")
+    parser.add_argument('--save-traj', action='store_true', help="Indicates whether to save the full trajectory of the particles. Default=False.")
+    
 
     args = parser.parse_args()
 
@@ -168,7 +177,12 @@ def main(args):
     tH_inspiral_fraction = systems.inspiral_time()
     
     # do evolution of each tracer particle
-    systems.evolve(gal, args.t0, multiproc=args.multiproc)
+    systems.evolve(gal, args.t0, multiproc=args.multiproc, \
+                        int_method=args.int_method, \
+                        Tinsp_lim=args.Tinsp_lim, \
+                        Tmax_int=args.Tmax_int, \
+                        Nsteps_per_bin=args.Nsteps_per_bin, \
+                        save_traj=args.save_traj)
 
     # write data to output file
     systems.write(args.output_dirpath, args.t0)

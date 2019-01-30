@@ -3,6 +3,7 @@ import pandas as pd
 
 import time
 import multiprocessing
+from functools import partial
 
 import astropy.units as u
 import astropy.constants as C
@@ -297,12 +298,12 @@ class Systems:
 
     
 
-    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None):
+    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
             1. The system evolves until the time of the sGRB
-            2. The system merges due to GW emission (if tdelay_lim=True, otherwise will evolve until the time of the sgrb)
+            2. The system merges due to GW emission (if Tinsp_lim=True, otherwise will evolve until the time of the sgrb)
 
         Each system will evolve through a series of galactic potentials specified in distinct redshift bins in the 'gal' class
 
@@ -322,12 +323,16 @@ class Systems:
             else:
                 mp = int(multiproc)
 
-            # initialize the parallelization
-            p = multiprocessing.Pool(mp)
+            # initialize the parallelization, and specify function arguments
+            pool = multiprocessing.Pool(mp)
+            func = partial(integrate_orbits, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj)
 
             start = time.time()
             print('Parallelizing integration of the orbits over {0:d} cores...'.format(mp))
-            results = p.map(integrate_orbits, systems_info)
+            results = pool.map(integrate_orbits, systems_info)
+            pool.close()
+            pool.join()
+
             results = np.transpose(results)
             x_finals,y_finals,z_finals,vx_finals,vy_finals,vz_finals,merger_redzs,R_offsets,R_offset_projs = results[0],results[1],results[2],results[3],results[4],results[5],results[6],results[7],results[8]
             stop = time.time()
@@ -352,7 +357,7 @@ class Systems:
 
             for system in systems_info:
 
-                x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj = integrate_orbits(system)
+                x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj = integrate_orbits(system, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj)
 
                 merger_redzs.append(merger_redz)
                 R_offsets.append(R_offset)
@@ -406,12 +411,14 @@ class Systems:
 
 
 
-def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=60):
+def integrate_orbits(system, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False):
     """Function for integrating orbits. 
 
-    If tdelay_lim==True, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
+    If Tinsp_lim==False, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
     
-    t_max will end integration if t_int > t_max.
+    Tmax_int will end integration if t_int > Tmax_int.
+
+    If save_traj == True, will save the full trajectory information rather than just the last step
     """
 
     start_time = time.time()
@@ -433,7 +440,10 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=60):
     # initialize cosmology
     cosmo = cosmology.Cosmology()
 
+    INSP_FLAG=False
+    MERGED=False
     FINISHED_EVOLVING=False
+
     while FINISHED_EVOLVING==False:
 
         # first, check that the system servived ther supernova
@@ -490,18 +500,19 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=60):
             if interp:
                 dt = utils.Tcgs_to_nat(dt)
 
-            # see if the merger occurred during this step
-            # note that if tdelay_lim=False, it will skip this part
-            if ((T_elapsed+dt) > Tinsp and tdelay_lim==True):
 
-                # only evolve until merger
-                dt = (Tinsp - T_elapsed)
+            # see if the merger occurred during this step
+            # note that if Tinsp_lim=False, it will continue the integration until the time of the sGRB
+            if (((T_elapsed+dt) > Tinsp) and INSP_FLAG==False):
+
+                # see where it merged
+                dt_merge = (Tinsp - T_elapsed)
 
                 # get timesteps for this integration (set to 1000 steps for now)
                 if interp:
-                    ts = np.linspace(0,dt,1000)
+                    ts = np.linspace(0,dt_merge,Nsteps_per_bin)
                 else:
-                    ts = np.linspace(0*u.s,dt*u.s,1000)
+                    ts = np.linspace(0*u.s,dt_merge*u.s,Nsteps_per_bin)
 
                 # initialize the orbit and integrate, store redshift of merger
                 if interp:
@@ -515,12 +526,17 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=60):
                     age = times[t0]+Tinsp
                     merger_redz = float(cosmo.tage_to_z(age))
 
-                stop_time = time.time()
-                if VERBOSE:
-                    print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}, integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
+                INSP_FLAG=True
+                MERGED=True
 
-                FINISHED_EVOLVING = True
-                break
+                # If Tinsp_lim==True, stop the integration here
+                if Tinsp_lim==True:
+                    FINISHED_EVOLVING = True
+                    stop_time = time.time()
+
+                    if VERBOSE:
+                        print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}...integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
+                    break
 
 
             # if it didn't merge, evolve until the next timestep
@@ -528,9 +544,9 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=60):
 
             # get timesteps for this integration (set to 1000 steps for now)
             if interp:
-                ts = np.linspace(0,dt,1000)
+                ts = np.linspace(0,dt,Nsteps_per_bin)
             else:
-                ts = np.linspace(0*u.s,dt*u.s,1000)
+                ts = np.linspace(0*u.s,dt*u.s,Nsteps_per_bin)
 
             # initialize the orbit and integrate
             if interp:
@@ -540,27 +556,34 @@ def integrate_orbits(system, int_method='odeint', tdelay_lim=True, t_max=60):
                 orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
                 orb.integrate(ts, full_potentials[:(tt+1)], method=int_method)
 
-            # if it evolved until the end and did not merge, end the integration
+
+            # if it evolved until the time of the sGRB, end the integration
             if tt == (len(times)-2):
-                # set merger_redz to 0
-                merger_redz = 0
                 time_evolved = times[(tt+1)]-times[t0]
 
                 stop_time = time.time()
-                if VERBOSE:
-                    print('  Tracer {0:d}:\n    system evolved for {1:0.2e} Myr and did not merge prior to the sGRB, integration took {2:0.2f}s'.format(idx, time_evolved*u.s.to(u.Myr), (stop_time-start_time)))
+
+                if MERGED:
+                    if VERBOSE:
+                        print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}...integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
+
+                else:
+                    # set merger_redz to 0
+                    merger_redz = 0
+                    if VERBOSE:
+                        print('  Tracer {0:d}:\n    system evolved for {1:0.2e} Myr and did not merge prior to the sGRB...integration took {2:0.2f}s'.format(idx, time_evolved*u.s.to(u.Myr), (stop_time-start_time)))
 
                 FINISHED_EVOLVING = True
                 break
 
 
-            # if integration time surpasses t_max, end
-            if (time.time()-start_time) > t_max:
+            # if integration time surpasses Tmax_int, end
+            if (time.time()-start_time) > Tmax_int:
 
                 # set merger_redz to -1 to keep track of these
                 merger_redz = -1
 
-                print('  Tracer {0:d}:\n    system integrated for longer than t_max={1:0.1f}s, integration terminated'.format(idx, t_max))
+                print('  Tracer {0:d}:\n    system integrated for longer than Tmax_int={1:0.1f}s, integration terminated'.format(idx, Tmax_int))
 
                 FINISHED_EVOLVING=True
                 break

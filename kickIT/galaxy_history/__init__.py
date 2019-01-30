@@ -92,7 +92,7 @@ class GalaxyHistory:
         self.redz = cosmo.tage_to_z(self.times)
         if self.VERBOSE:
             textr = np.array([times.min(), times.max()])
-            print("Times: {:3d} between [{:.1e}, {:.1e}] Gyr (z={:.1e}, {:.1e})".format(
+            print("\nTimes: {:3d} between [{:.1e}, {:.1e}] Gyr (z={:.1e}, {:.1e})".format(
                 times.size, *textr/GYR, self.redz.max(), self.redz.min()))
 
         # Construct sampling of radii for constructing interpolants (flat in log)
@@ -138,7 +138,8 @@ class GalaxyHistory:
         mass_stars[idx] -= self.obs_gal_sfr * (self.time_end - self.times[idx])
         growth_quiescent = self.obs_gal_sfr * (self.time_end - time_sfr_peak)
         frac = growth_quiescent / mass_stars[-1]
-        print("During quiescent state, galaxy grew by {:.2e} (dM={:.2e} [Msol])".format(
+        if self.VERBOSE:
+            print("During quiescent state, galaxy grew by {:.2e} (dM={:.2e} [Msol])".format(
             frac, growth_quiescent/MSOL))
         # For the model to be consistent, the fractional growth during "quiescent" phase should be
         # negligible
