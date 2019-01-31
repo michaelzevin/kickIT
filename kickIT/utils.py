@@ -58,6 +58,8 @@ def shell_volumes(rads, relative=True, reset_inner=True):
 def euler_rot(vectors, angles, axis):
     """
     Performed Euler angle transformation on vector. 
+
+    Takes in vectors as (Nsamples x Ndim)
     """
     if axis=='X':
         transformations = np.asarray([[[1,0,0],[0,np.cos(angle),-np.sin(angle)],[0,np.sin(angle),np.cos(angle)]] for angle in angles])
@@ -68,9 +70,7 @@ def euler_rot(vectors, angles, axis):
     else:
         raise ValueError("Unknown axis '{0:s}' specified in Euler transformation)".format(axis))
 
-
-    rot_vectors = np.asarray([np.dot(transform, vector) for (transform,vector) in zip (transformations, vectors)])
-
+    rot_vectors = np.asarray([np.dot(trans,vector).T for (trans,vector) in zip(transformations, vectors)])
     return rot_vectors
 
 

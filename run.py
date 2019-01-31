@@ -83,7 +83,7 @@ def parse_commandline():
     parser.add_argument('--Tinsp-lim', action='store_true', help="Indicates whether the integrator should evolve only until the merger rather than all the way until the sGRB. Default=False.")
     parser.add_argument('--Tmax-int', type=float, default=60.0, help="Amount of time to integrate before terminating, in seconds. Default is 60.0.")
     parser.add_argument('--Nsteps-per-bin', type=int, default=1000, help="Number of timesteps per redshift bin in the integration. Default is 1000.")
-    parser.add_argument('--save-traj', action='store_true', help="Indicates whether to save the full trajectory of the particles. Default=False.")
+    parser.add_argument('--save-traj', action='store_true',help="Indicates whether to save the full trajectories. Default=False")
     
 
     args = parser.parse_args()
@@ -182,7 +182,8 @@ def main(args):
                         Tinsp_lim=args.Tinsp_lim, \
                         Tmax_int=args.Tmax_int, \
                         Nsteps_per_bin=args.Nsteps_per_bin, \
-                        save_traj=args.save_traj)
+                        save_traj=args.save_traj, \
+                        outdir = args.output_dirpath)
 
     # write data to output file
     systems.write(args.output_dirpath, args.t0)
@@ -190,6 +191,8 @@ def main(args):
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))
+
+    pdb.set_trace()
 
 
 # MAIN FUNCTINON

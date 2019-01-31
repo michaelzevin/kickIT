@@ -4,6 +4,7 @@ import pandas as pd
 import time
 import multiprocessing
 from functools import partial
+import copy
 
 import astropy.units as u
 import astropy.constants as C
@@ -298,7 +299,7 @@ class Systems:
 
     
 
-    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False):
+    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False, outdir=None):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
@@ -311,10 +312,22 @@ class Systems:
         """
         print('Evolving orbits of the tracer particles...\n')
 
+        # set up arrays/lists of arrays for storing output
+        merger_redzs = []
+        R_offsets = []
+        Rproj_offsets = []
+        Xs = []
+        Ys = []
+        Zs = []
+        vXs = []
+        vYs = []
+        vZs = []
+
+
         # get the pertinent data for the evolution function
         systems_info = []
         for idx in np.arange(self.Nsys):
-            systems_info.append([idx,self.SNsurvive[idx],self.Tinsp[idx],self.R[idx],self.Vpx[idx],self.Vpy[idx],self.Vpz[idx], gal.interp, gal.times, gal.interpolated_potentials, gal.full_potentials, t0, self.VERBOSE])
+            systems_info.append([idx,self.SNsurvive[idx],self.Tinsp[idx],self.R[idx],self.Vpx[idx],self.Vpy[idx],self.Vpz[idx]])
 
         # enable multiprocessing, if specifed
         if multiproc:
@@ -325,16 +338,16 @@ class Systems:
 
             # initialize the parallelization, and specify function arguments
             pool = multiprocessing.Pool(mp)
-            func = partial(integrate_orbits, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj)
+            func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, outdir=outdir, VERBOSE=self.VERBOSE)
 
             start = time.time()
             print('Parallelizing integration of the orbits over {0:d} cores...'.format(mp))
-            results = pool.map(integrate_orbits, systems_info)
+            results = pool.map(func, systems_info)
             pool.close()
             pool.join()
 
             results = np.transpose(results)
-            x_finals,y_finals,z_finals,vx_finals,vy_finals,vz_finals,merger_redzs,R_offsets,R_offset_projs = results[0],results[1],results[2],results[3],results[4],results[5],results[6],results[7],results[8]
+            Xs,Ys,Zs,vXs,vYs,vZs,R_offsets,Rproj_offsets,merger_redzs = results[0],results[1],results[2],results[3],results[4],results[5],results[6],results[7],results[8]
             stop = time.time()
             print('Finished! It took {0:0.2f}s\n'.format(stop-start))
 
@@ -345,45 +358,35 @@ class Systems:
             start = time.time()
             print('Performing the integrations in serial...')
 
-            merger_redzs = []
-            R_offsets = []
-            R_offset_projs = []
-            x_finals = []
-            y_finals = []
-            z_finals = []
-            vx_finals = []
-            vy_finals = []
-            vz_finals = []
-
             for system in systems_info:
 
-                x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj = integrate_orbits(system, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj)
+                func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, outdir=outdir, VERBOSE=self.VERBOSE)
+                X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset,merger_redz = func(system)
 
-                merger_redzs.append(merger_redz)
+                Xs.append(X)
+                Ys.append(Y)
+                Zs.append(Z)
+                vXs.append(vX)
+                vYs.append(vY)
+                vZs.append(vZ)
                 R_offsets.append(R_offset)
-                R_offset_projs.append(R_offset_proj)
-                x_finals.append(x_final)
-                y_finals.append(y_final)
-                z_finals.append(z_final)
-                vx_finals.append(vx_final)
-                vy_finals.append(vy_final)
-                vz_finals.append(vz_final)
+                Rproj_offsets.append(Rproj_offset)
+                merger_redzs.append(merger_redz)
 
             stop = time.time()
             print('Finished! It took {0:0.2f}s\n'.format(stop-start))
 
 
-
         # store everything in systems class
         self.merger_redz = np.asarray(merger_redzs)
         self.R_offset = np.asarray(R_offsets)
-        self.R_offset_proj = np.asarray(R_offset_projs)
-        self.x_final = np.asarray(x_finals)
-        self.y_final = np.asarray(y_finals)
-        self.z_final = np.asarray(z_finals)
-        self.Vx_final = np.asarray(vx_finals)
-        self.Vy_final = np.asarray(vy_finals)
-        self.Vz_final = np.asarray(vz_finals)
+        self.Rproj_offset = np.asarray(Rproj_offsets)
+        self.X = np.asarray(Xs)
+        self.Y = np.asarray(Ys)
+        self.Z = np.asarray(Zs)
+        self.vX = np.asarray(vXs)
+        self.vY = np.asarray(vYs)
+        self.vZ = np.asarray(vZs)
 
         return
 
@@ -411,7 +414,7 @@ class Systems:
 
 
 
-def integrate_orbits(system, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False):
+def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False, outdir=None, VERBOSE=False):
     """Function for integrating orbits. 
 
     If Tinsp_lim==False, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
@@ -423,6 +426,14 @@ def integrate_orbits(system, int_method='odeint', Tinsp_lim=False, Tmax_int=60, 
 
     start_time = time.time()
 
+    # NaN values to initialize positions
+    X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset = np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan
+
+    # Lists for storing trajectories, if save_traj==True
+    if save_traj:
+        X_traj,Y_traj,Z_traj,vX_traj,vY_traj,vZ_traj,R_offset_traj,Rproj_offset_traj,time_traj = [],[],[],[],[],[],[],[],[]
+
+    # system info
     idx = system[0]
     SNsurvive = system[1]
     Tinsp = system[2]
@@ -430,12 +441,13 @@ def integrate_orbits(system, int_method='odeint', Tinsp_lim=False, Tmax_int=60, 
     Vpx = system[4]
     Vpy = system[5]
     Vpz = system[6]
-    interp = system[7]
-    times = system[8]
-    interpolated_potentials = system[9]
-    full_potentials = system[10]
-    t0 = system[11]
-    VERBOSE = system[12]
+
+    # gal info
+    interp = gal.interp
+    times = gal.times
+    redz=gal.redz
+    interpolated_potentials = gal.interpolated_potentials
+    full_potentials = gal.full_potentials
     
     # initialize cosmology
     cosmo = cosmology.Cosmology()
@@ -446,21 +458,13 @@ def integrate_orbits(system, int_method='odeint', Tinsp_lim=False, Tmax_int=60, 
 
     while FINISHED_EVOLVING==False:
 
-        # first, check that the system servived ther supernova
+        # first, check that the system survived ther supernova
         if SNsurvive == False:
-            # write in NaNs here for orb, offset, and merger_redz
+            # write in NaNs here for merger_redz
             merger_redz = np.nan
-            R_offset = np.nan
-            R_offset_proj = np.nan
-            x_final = np.nan
-            y_final = np.nan
-            z_final = np.nan
-            vx_final = np.nan
-            vy_final = np.nan
-            vz_final = np.nan
 
             FINISHED_EVOLVING=True
-            return x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj
+            return X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset,merger_redz
 
 
         # if the system survived the supernova, jot down its inspiral time
@@ -589,40 +593,99 @@ def integrate_orbits(system, int_method='odeint', Tinsp_lim=False, Tmax_int=60, 
                 break
 
 
+            # append orbit information at this step, if save_traj==True
+            X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset = transform_orbits(copy.deepcopy(orb))
+
+            if save_traj:
+                X_traj.append(X)
+                Y_traj.append(Y)
+                Z_traj.append(Z)
+                vX_traj.append(vX)
+                vY_traj.append(vY)
+                vZ_traj.append(vZ)
+                R_offset_traj.append(R_offset)
+                Rproj_offset_traj.append(Rproj_offset)
+                if interp:
+                    int_times = times[t0]+utils.Tnat_to_cgs(T_elapsed+ts)
+                else:
+                    int_times = times[t0]+ts+T_elapsed
+                time_traj.append(int_times)
+
             tt += 1
 
 
-    # once the system has either merged or integrated until the time of the sGRB, save offset
-    # NOTE: galpy's code spits things out in natural units no matter what you input!!!
-    R_final = orb.getOrbit()[-1][0]
-    vR_final = orb.getOrbit()[-1][1]
-    vT_final = orb.getOrbit()[-1][2]
-    Z_final = orb.getOrbit()[-1][3]
-    vZ_final = orb.getOrbit()[-1][4]
-    Phi_final = orb.getOrbit()[-1][5] % (2*np.pi)
-
-    R_final, vR_final, vT_final, Z_final, vZ_final, Phi_final = utils.orbit_nat_to_cgs(R_final, vR_final, vT_final, Z_final, vZ_final, Phi_final)
-
-    vPhi_final = vT_final / R_final
-
-    R_offset = np.sqrt(R_final**2 + Z_final**2)
-
-    # get final positions and velocities in Cartesian coordinates
-    x_final,y_final,z_final,vx_final,vy_final,vz_final = utils.cylindrical_to_cartesian(R_final,Phi_final,Z_final,vR_final,vPhi_final,vZ_final)
-
-    # randomly rotate the vectors by Euler rotations to get a mock projected offset, assuming observer is in z-hat direction
-    vec = np.atleast_2d([x_final,y_final,z_final])
-    rot_vec = utils.euler_rot(vec, (2*np.pi*np.random.random(size=1)), axis='X')
-    rot_vec = utils.euler_rot(rot_vec, (2*np.pi*np.random.random(size=1)), axis='Y')
-    rot_vec = utils.euler_rot(rot_vec, (2*np.pi*np.random.random(size=1)), axis='Z')
-    rot_vec = rot_vec.flatten()
-
-    R_offset_proj = np.sqrt(rot_vec[0]**2 + rot_vec[1]**2)
+    # once the system has either merged or integrated until the time of the sGRB, save trajectory information
+    X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset = transform_orbits(copy.deepcopy(orb))
 
     if VERBOSE:
-        print('    offset: {0:0.2f} kpc (proj: {1:0.2f} kpc)\n'.format(R_offset*u.cm.to(u.kpc), R_offset_proj*u.cm.to(u.kpc)))
+        print('    final offset: {0:0.2f} kpc (proj: {1:0.2f} kpc)\n'.format(R_offset[-1]*u.cm.to(u.kpc), Rproj_offset[-1]*u.cm.to(u.kpc)))
+
+    # append orbit information at this step, if save_traj==True
+    if save_traj:
+        X_traj.append(X)
+        Y_traj.append(Y)
+        Z_traj.append(Z)
+        vX_traj.append(vX)
+        vY_traj.append(vY)
+        vZ_traj.append(vZ)
+        R_offset_traj.append(R_offset)
+        Rproj_offset_traj.append(Rproj_offset)
+        if interp:
+            int_times = times[t0]+utils.Tnat_to_cgs(T_elapsed+ts)
+        else:
+            int_times = times[t0]+ts+T_elapsed
+        time_traj.append(int_times)
+
+        # flatten and save trajectories
+        trajectories = pd.DataFrame()
+        trajectories['X'] = [item for sublist in X_traj for item in sublist]
+        trajectories['Y'] = [item for sublist in Y_traj for item in sublist]
+        trajectories['Z'] = [item for sublist in Z_traj for item in sublist]
+        trajectories['vX'] = [item for sublist in vX_traj for item in sublist]
+        trajectories['vY'] = [item for sublist in vY_traj for item in sublist]
+        trajectories['vZ'] = [item for sublist in vZ_traj for item in sublist]
+        trajectories['R_offset'] = [item for sublist in R_offset_traj for item in sublist]
+        trajectories['Rproj_offset'] = [item for sublist in Rproj_offset_traj for item in sublist]
+        trajectories['time'] = [item for sublist in time_traj for item in sublist]
+        trajectories.to_hdf(outdir+'/trajectories.hdf', key='system_'+str(idx), mode='a')
 
 
-    return x_final,y_final,z_final,vx_final,vy_final,vz_final,merger_redz,R_offset,R_offset_proj
+    # return the final values
+    return X[-1],Y[-1],Z[-1],vX[-1],vY[-1],vZ[-1],R_offset[-1],Rproj_offset[-1],merger_redz
 
+
+
+
+def transform_orbits(orb):
+    """Takes in orbit, transforms to cartesian (cgs units), and calculates offsets/projected offsets.
+
+    By default, just returns the final values in cartesian coordinates, as well as the offset and projected offset. 
+    """
+    # NOTE: galpy's code spits things out in natural units no matter what you input!!!
+
+    Rs = orb.getOrbit()[:,0]
+    vRs = orb.getOrbit()[:,1]
+    vTs = orb.getOrbit()[:,2]
+    Zs = orb.getOrbit()[:,3]
+    vZs = orb.getOrbit()[:,4]
+    Phis = orb.getOrbit()[:,5] % (2*np.pi)
+
+    # convert from natural to cgs units
+    # NOTE: THIS CHANGES THE INSTANCE ORBIT TO CGS TOO!!!
+    Rs, vRs, vTs, Zs, vZs, Phis = utils.orbit_nat_to_cgs(Rs, vRs, vTs, Zs, vZs, Phis)
+    vPhis = vTs / Rs
+    R_offsets = np.sqrt(Rs**2 + Zs**2)
+
+    # get positions and velocities in Cartesian coordinates
+    Xs,Ys,Zs,vXs,vYs,vZs = utils.cylindrical_to_cartesian(Rs, Phis, Zs, vRs, vPhis, vZs)
+
+    # randomly rotate the vectors by Euler rotations to get a mock projected offset, assuming observer is in z-hat direction
+    vecs = np.transpose([Xs,Ys,Zs])   # (Nsamples x Ndim)
+    rot_vecs = utils.euler_rot(vecs, np.ones(len(vecs))*(2*np.pi*np.random.random()), axis='X')
+    rot_vecs = utils.euler_rot(rot_vecs, np.ones(len(vecs))*(2*np.pi*np.random.random()), axis='Y')
+    rot_vecs = utils.euler_rot(rot_vecs, np.ones(len(vecs))*(2*np.pi*np.random.random()), axis='Z')
+
+    Rproj_offsets = np.sqrt(rot_vecs[:,0]**2 + rot_vecs[:,1]**2)
+
+    return Xs,Ys,Zs,vXs,vYs,vZs,R_offsets,Rproj_offsets
 
