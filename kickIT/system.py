@@ -5,6 +5,7 @@ import time
 import multiprocessing
 from functools import partial
 import copy
+import os
 
 import astropy.units as u
 import astropy.constants as C
@@ -299,7 +300,7 @@ class Systems:
 
     
 
-    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False, outdir=None):
+    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
@@ -338,7 +339,7 @@ class Systems:
 
             # initialize the parallelization, and specify function arguments
             pool = multiprocessing.Pool(mp)
-            func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, outdir=outdir, VERBOSE=self.VERBOSE)
+            func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, VERBOSE=self.VERBOSE)
 
             start = time.time()
             print('Parallelizing integration of the orbits over {0:d} cores...'.format(mp))
@@ -360,7 +361,7 @@ class Systems:
 
             for system in systems_info:
 
-                func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, outdir=outdir, VERBOSE=self.VERBOSE)
+                func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, VERBOSE=self.VERBOSE)
                 X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset,merger_redz = func(system)
 
                 Xs.append(X)
@@ -388,6 +389,17 @@ class Systems:
         self.vY = np.asarray(vYs)
         self.vZ = np.asarray(vZs)
 
+        # combine the trajectories into a single hdf5 file, if save_traj==True
+        print('Combining trajectory files into single hdf5 file...\n')
+        if save_traj==True:
+            for f in os.listdir(outdir):
+                if 'trajectories_' in f:
+                    temp = pd.read_hdf(outdir+'/'+f, key='system')
+                    _, idx = f.split('_')
+                    idx, _ = idx.split('.')
+                    temp.to_hdf(outdir+'/trajectories.hdf', key='system_'+str(idx))
+                    os.remove(outdir+'/'+f)
+
         return
 
             
@@ -414,14 +426,14 @@ class Systems:
 
 
 
-def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False, outdir=None, VERBOSE=False):
+def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, VERBOSE=False):
     """Function for integrating orbits. 
 
     If Tinsp_lim==False, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
     
     Tmax_int will end integration if t_int > Tmax_int.
 
-    If save_traj == True, will save the full trajectory information rather than just the last step
+    If save_traj == True, will save the full trajectory information rather than just the last step. If downsample is also specified, will save only every Nth line in the trajectories dataframe.
     """
 
     start_time = time.time()
@@ -647,7 +659,12 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tmax
         trajectories['R_offset'] = [item for sublist in R_offset_traj for item in sublist]
         trajectories['Rproj_offset'] = [item for sublist in Rproj_offset_traj for item in sublist]
         trajectories['time'] = [item for sublist in time_traj for item in sublist]
-        trajectories.to_hdf(outdir+'/trajectories.hdf', key='system_'+str(idx), mode='a')
+        # if downsample is specified, apply here
+        if downsample:
+            trajectories = trajectories.iloc[::downsample, :]
+
+        # save each trajectory separately, then combine at the end
+        trajectories.to_hdf(outdir+'/trajectories_'+str(idx)+'.hdf', key='system', mode='a')
 
 
     # return the final values

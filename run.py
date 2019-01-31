@@ -54,6 +54,7 @@ def parse_commandline():
     parser.add_argument('--z-scale', type=float, default=0.05, help="Fraction of the galactic scale radius for the scale height above/below the disk. Default=0.05.")
 
     # sampling arguments
+    parser.add_argument('--sample-progenitor-props', action='store_true',help="Indicates whether to use specific sampling for the progenitor properties defined in sample.py (i.e., fro pop synth). If not specified, a grid in *only* R (based on the SF profile) and Vsys (with random initial direction for Vsys) will be used for initializing the particles. Default=False.")
     parser.add_argument('--Mcomp-method', type=str, default='popsynth', help="Method for sampling the companion mass. Default is 'popsynth'.")
     parser.add_argument('--Mns-method', type=str, default='popsynth', help="Method for sampling the mass of the neutron star formed from the NS. Default is 'popsynth'.")
     parser.add_argument('--Mhe-method', type=str, default='popsynth', help="Method for sampling the helium star mass. Default is 'popsynth'.")
@@ -84,6 +85,7 @@ def parse_commandline():
     parser.add_argument('--Tmax-int', type=float, default=60.0, help="Amount of time to integrate before terminating, in seconds. Default is 60.0.")
     parser.add_argument('--Nsteps-per-bin', type=int, default=1000, help="Number of timesteps per redshift bin in the integration. Default is 1000.")
     parser.add_argument('--save-traj', action='store_true',help="Indicates whether to save the full trajectories. Default=False")
+    parser.add_argument('--downsample', type=int, default=None, help="Downsamples the trajectory data by taking every Nth line in the trajectories dataframe. Default=None.")
     
 
     args = parser.parse_args()
@@ -183,6 +185,7 @@ def main(args):
                         Tmax_int=args.Tmax_int, \
                         Nsteps_per_bin=args.Nsteps_per_bin, \
                         save_traj=args.save_traj, \
+                        downsample=args.downsample, \
                         outdir = args.output_dirpath)
 
     # write data to output file
