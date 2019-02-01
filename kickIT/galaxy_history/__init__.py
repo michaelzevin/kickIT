@@ -449,9 +449,9 @@ class GalaxyHistory:
                 
 
         # combine all the potentials
-        interp_data=[]
+        combined_potentials=[]
         for idx, pot in enumerate(self.full_potentials_natural):
-            interp_data.append([self.full_potentials_natural[:(idx+1)]])
+            combined_potentials.append(self.full_potentials_natural[:(idx+1)])
 
 
         # enable multiprocessing, if specified
@@ -466,7 +466,7 @@ class GalaxyHistory:
 
             start = time.time()
             print('Parallelizing interpolations over {0:d} cores...\n'.format(mp))
-            interpolated_potentials = pool.map(func, interp_data)
+            interpolated_potentials = pool.map(func, combined_potentials)
             stop = time.time()
             print('   finished! It took {0:0.2f}s\n'.format(stop-start))
             
@@ -476,7 +476,7 @@ class GalaxyHistory:
             print('Interpolating potentials in serial...\n')
             interpolated_potentials=[]
             func = partial(interp, rgrid=logrs, zgrid=zs)
-            for ii, data in enumerate(interp_data):
+            for ii, data in enumerate(combined_potentials):
 
                 start = time.time()
                 ip = func(data)
@@ -510,12 +510,8 @@ class GalaxyHistory:
                 
                 
 # define interpolating function
-def interp(interp_data, rgrid, zgrid, ro=_ro, vo=_vo):
-    pot = interp_data[0]
-    logrs = interp_data[1]
-    zs = interp_data[2]
-
-    ip = interpRZPotential(pot, rgrid=rgrid, zgrid=zgrid, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
+def interp(combined_potential, rgrid, zgrid, ro=_ro, vo=_vo):
+    ip = interpRZPotential(combined_potential, rgrid=rgrid, zgrid=zgrid, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
     return ip
 
 
