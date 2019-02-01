@@ -40,6 +40,8 @@ def parse_commandline():
     parser.add_argument('-T', '--Tsteps', type=int, default=100, help="Number of discrete time (redshift) bins to evolve systems in. Default is 100.")
     parser.add_argument('-rg', '--Rgrid', type=int, default=100, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
     parser.add_argument('-zg', '--Zgrid', type=int, default=50, help="Number of gridpoints for the Z-component of the interpolation model. Default is 50.") 
+    parser.add_argument('--Rgrid-max', type=float, default=1e3, help="Maximum R value for interpolated potentials. Default is 1e3.")
+    parser.add_argument('--Zgrid-max', type=float, default=1e2, help="Maximum Z value for interpolated potentials. Default is 1e2.")
 
     # paths to data files
     parser.add_argument('--interp-dirpath', type=str, help="Path to the directory that holds interpolation files. Default is None.")
@@ -82,7 +84,7 @@ def parse_commandline():
     # integration arguments
     parser.add_argument('--int-method', type=str, default='odeint', help="Integration method for the orbits. Possible options are 'odeint' or 'leapfrog', until we get the C implementation working. Default is 'odeint'.")
     parser.add_argument('--Tinsp-lim', action='store_true', help="Indicates whether the integrator should evolve only until the merger rather than all the way until the sGRB. Default=False.")
-    parser.add_argument('--Tmax-int', type=float, default=60.0, help="Amount of time to integrate before terminating, in seconds. Default is 60.0.")
+    parser.add_argument('--Tint-max', type=float, default=120.0, help="Amount of time to integrate before terminating, in seconds. Default is 120.0.")
     parser.add_argument('--Nsteps-per-bin', type=int, default=1000, help="Number of timesteps per redshift bin in the integration. Default is 1000.")
     parser.add_argument('--save-traj', action='store_true',help="Indicates whether to save the full trajectories. Default=False")
     parser.add_argument('--downsample', type=int, default=None, help="Downsamples the trajectory data by taking every Nth line in the trajectories dataframe. Default=None.")
@@ -126,6 +128,8 @@ def main(args):
                         Tsteps = args.Tsteps,\
                         Rgrid = args.Rgrid,\
                         Zgrid = args.Zgrid,\
+                        Rgrid_max = args.Rgrid_max,\
+                        Zgrid_max = args.Zgrid_max,\
                         name = grb_props['GRB'].item(),\
                         multiproc = args.multiproc,\
                         verbose = args.verbose)
@@ -190,7 +194,7 @@ def main(args):
     systems.evolve(gal, args.t0, multiproc=args.multiproc, \
                         int_method=args.int_method, \
                         Tinsp_lim=args.Tinsp_lim, \
-                        Tmax_int=args.Tmax_int, \
+                        Tint_max=args.Tint_max, \
                         Nsteps_per_bin=args.Nsteps_per_bin, \
                         save_traj=args.save_traj, \
                         downsample=args.downsample, \

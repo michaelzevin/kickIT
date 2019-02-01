@@ -44,8 +44,8 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=100, name=None, multiproc=None, verbose=False):
-        """All input parameters should be in CGS units!
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, Rgrid_max=1e3, Zgrid_max=1e2, name=None, multiproc=None, verbose=False):
+        """All parameters are converted to CGS units!
         """
 
         # Store if verbose
@@ -59,11 +59,13 @@ class GalaxyHistory:
 
         # Radial points at which to construct the interpolant, in pc
         self.NUM_RADS = Rgrid
-        self.RADS_RANGE = np.array([1e-4,1e4]) * KPC   # cm
+        self.RGRID_MAX = int(Rgrid_max)
+        self.RADS_RANGE = np.array([1e-4,Rgrid_max]) * KPC   # cm
 
         # Disk height points at which to construct the interpolant, in pc
         self.NUM_HEIGHTS = Zgrid
-        self.HEIGHTS_RANGE = np.array([0,1e2]) * KPC   # cm
+        self.ZGRID_MAX = int(Zgrid_max)
+        self.HEIGHTS_RANGE = np.array([0,Zgrid_max]) * KPC   # cm
 
         # Initialize cosmology
         cosmo = cosmology.Cosmology()
@@ -424,7 +426,7 @@ class GalaxyHistory:
 
         if interp_dirpath:
             # if interpolation path is provided, see if the interpolated potentials exist
-            pickle_path = interp_dirpath + '/' + self.name + '_' + str(self.NUM_TIME_STEPS) + 'T_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z.pkl'
+            pickle_path = interp_dirpath + '/' + self.name + '_' + str(self.NUM_TIME_STEPS) + 'T_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z_' + str(self.RGRID_MAX) + 'Rmax_' + str(self.ZGRID_MAX) + 'Zmax.pkl'
             if os.path.isfile(pickle_path):
 
                 # read in the pickled file

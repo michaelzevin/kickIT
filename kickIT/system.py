@@ -322,7 +322,7 @@ class Systems:
 
     
 
-    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None):
+    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
@@ -361,7 +361,7 @@ class Systems:
 
             # initialize the parallelization, and specify function arguments
             pool = multiprocessing.Pool(mp)
-            func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, VERBOSE=self.VERBOSE)
+            func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tint_max=Tint_max, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, VERBOSE=self.VERBOSE)
 
             start = time.time()
             print('Parallelizing integration of the orbits over {0:d} cores...'.format(mp))
@@ -383,7 +383,7 @@ class Systems:
 
             for system in systems_info:
 
-                func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tmax_int=Tmax_int, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, VERBOSE=self.VERBOSE)
+                func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tint_max=Tint_max, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, VERBOSE=self.VERBOSE)
                 X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset,merger_redz = func(system)
 
                 Xs.append(X)
@@ -448,12 +448,12 @@ class Systems:
 
 
 
-def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tmax_int=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, VERBOSE=False):
+def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, VERBOSE=False):
     """Function for integrating orbits. 
 
     If Tinsp_lim==False, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
     
-    Tmax_int will end integration if t_int > Tmax_int.
+    Tint_max will end integration if t_int > Tint_max.
 
     If save_traj == True, will save the full trajectory information rather than just the last step. If downsample is also specified, will save only every Nth line in the trajectories dataframe.
     """
@@ -615,13 +615,14 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tmax
                 break
 
 
-            # if integration time surpasses Tmax_int, end
-            if (time.time()-start_time) > Tmax_int:
+            # if integration time surpasses Tint_max, end
+            if (time.time()-start_time) > Tint_max:
+                time_evolved = times[(tt+1)]-times[t0]
 
                 # set merger_redz to -1 to keep track of these
                 merger_redz = -1
 
-                print('  Tracer {0:d}:\n    system integrated for longer than Tmax_int={1:0.1f}s, integration terminated'.format(idx, Tmax_int))
+                print('  Tracer {0:d}:\n    system evolved for {1:0.2e} Myr and longer than maximum integration time ({2:0.1f}s), integration terminated'.format(idx, time_evolved*u.s.to(u.Myr), Tint_max))
 
                 FINISHED_EVOLVING=True
                 break
