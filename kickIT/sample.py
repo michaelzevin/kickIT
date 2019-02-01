@@ -47,6 +47,7 @@ def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='ga
     return bin_params
 
 
+
 def sample_Mcomp(Nsys, method='gaussian', mean=1.33, sigma=0.09, samples=None, gw_samples=None):
     """
     Samples companion NS mass (m1)
@@ -373,5 +374,31 @@ def sample_R(Nsys, gal, t0, method='sfr', mean=3, samples=None):
     else:
         raise ValueError("Undefined R sampling method '{0:s}'.".format(method))
 
+
+
+
+
+### Option B: separate out the progenitor sampling and the evolution ###
+
+def sample_Vsys_R(gal, t0=0, Nsys=1, Vsys_range=(0,1000), R_method='sfr', verbose=False):
+    """
+    Samples only radii and systemic velocity. 
+
+    This allows the progenitor population sampling and trajectories to effectively run independently, allowing for the convolution of distribution as a post-processing step.
+
+    This function supplies *everything* necessary in the galactic frame, such that it can be fed directly into the systems.evolve method.
+    """
+
+    bin_params=pd.DataFrame(columns=['Vsys', 'R', 'Tinsp', 'SNsurvive'])
+
+    # sample Vsys
+    bin_params['Vsys'] = np.random.uniform(Vsys_range[0],Vsys_range[1], size=Nsys) * u.km.to(u.cm)
+    # sample R
+    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method)
+    # fix Tinsp and SNsurvive
+    bin_params['Tinsp'] = 14.0 * u.Gyr.to(u.s)
+    bin_params['SNsurvive'] = True
+
+    return bin_params
 
 

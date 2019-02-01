@@ -31,33 +31,42 @@ class Systems:
     System starts on a circular orbit in the r-phi (x-y) plane, on the x-axis (phi=0) and moving in the positive y direction. 
     Galaxy projection taken account when determining radial offset at merger. 
     """
-    def __init__(self, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None, verbose=False):
+    def __init__(self, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None, sample_progenitor_props=False, verbose=False):
 
         self.VERBOSE = verbose
 
-        # read in the sampled parameters
-        self.Mns = np.asarray(sampled_parameters['Mns'])
-        self.Mcomp = np.asarray(sampled_parameters['Mcomp'])
-        self.Mhe = np.asarray(sampled_parameters['Mhe'])
-        self.Apre = np.asarray(sampled_parameters['Apre'])
-        self.epre = np.asarray(sampled_parameters['epre'])
-        self.Vkick = np.asarray(sampled_parameters['Vkick'])
-        self.R = np.asarray(sampled_parameters['R'])
+        # read in the sampled progenitor parameters
+        if sample_progenitor_props:
+            self.Mns = np.asarray(sampled_parameters['Mns'])
+            self.Mcomp = np.asarray(sampled_parameters['Mcomp'])
+            self.Mhe = np.asarray(sampled_parameters['Mhe'])
+            self.Apre = np.asarray(sampled_parameters['Apre'])
+            self.epre = np.asarray(sampled_parameters['epre'])
+            self.Vkick = np.asarray(sampled_parameters['Vkick'])
+            self.R = np.asarray(sampled_parameters['R'])
+        # if progenitor properties not sampled, just save the necessary information
+        else:
+            self.Vsys = np.asarray(sampled_parameters['Vsys'])
+            self.R = np.asarray(sampled_parameters['R'])
+            self.Tinsp = np.asarray(sampled_parameters['Tinsp'])
+            self.SNsurvive = np.asarray(sampled_parameters['SNsurvive'])
+        
 
-        self.Nsys = len(self.Mns)
+        self.Nsys = len(self.R)
 
-        # initialize random angles
-        if SNphi: self.SNphi = SNphi
-        else: self.SNphi = np.random.uniform(0,2*np.pi, self.Nsys)
+        # initialize random angles (only need SN angles if implementing the SN)
+        if sample_progenitor_props:
+            if SNphi: self.SNphi = SNphi
+            else: self.SNphi = 2*np.pi*np.random.random(self.Nsys)
 
-        if SNtheta: self.SNtheta = SNtheta
-        else: self.SNtheta = np.arccos(np.random.uniform(0,1, self.Nsys))
+            if SNtheta: self.SNtheta = SNtheta
+            else: self.SNtheta = np.arccos(2*np.random.random(self.Nsys)-1)
 
         if SYSphi: self.SYSphi = SYSphi
-        else: self.SYSphi = np.random.uniform(0,2*np.pi, self.Nsys)
+        else: self.SYSphi = 2*np.pi*np.random.random(self.Nsys)
 
         if SYStheta: self.SYStheta = SYStheta
-        else: self.SYStheta = np.arccos(np.random.uniform(0,1, self.Nsys))
+        else: self.SYStheta = np.arccos(2*np.random.random(self.Nsys)-1)
 
 
     def SN(self):
@@ -259,6 +268,19 @@ class Systems:
         self.Vpost[disrupt_idx] = np.nan
         
         
+    def decompose_Vsys(self):
+        """
+        Decomposes systemic velocity (magnitude) into galactic frame using SYStheta and SYSphi, for when sampling only Vsys and R 
+        """
+
+        print('Decomposing systemic velocities into galactic frame of reference...\n')
+
+        # Save the velocity of the system immediately following the SN
+        # Don't forget to add the pre-SN galactic velocity to the y-component!
+        self.Vpx = self.Vsys*np.sin(self.SYStheta)*np.cos(self.SYSphi)
+        self.Vpy = self.Vsys*np.sin(self.SYStheta)*np.sin(self.SYSphi) + self.Vcirc
+        self.Vpz = self.Vsys*np.cos(self.SYStheta)
+        self.Vpost = np.linalg.norm(np.asarray([self.Vpx,self.Vpy,self.Vpz]), axis=0)
 
 
     def inspiral_time(self, Tinsp_max=14):

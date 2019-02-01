@@ -146,37 +146,46 @@ def main(args):
         'Vkick_sigma':args.Vkick_sigma, 'Vkick_min':args.Vkick_min, 'Vkick_max':args.Vkick_max,
         'R_mean':args.R_mean}
     
-    # get sampled properties of tracer particles
-    sampled_parameters = sample.sample_parameters(gal, t0=args.t0, Nsys=args.Nsys, \
-                            Mcomp_method=args.Mcomp_method, \
-                            Mns_method=args.Mns_method, \
-                            Mhe_method=args.Mhe_method, \
-                            Apre_method=args.Apre_method, \
-                            epre_method=args.epre_method, \
-                            Vkick_method=args.Vkick_method, \
-                            R_method=args.R_method, \
-                            params_dict = params_dict, \
-                            samples = args.samples_path, \
-                            verbose = args.verbose)
+    ### if we want to specifically sample the progenitor properties rather than just R and Vsys...
+    if args.sample_progenitor_props:
+        # sample system parameters
+        sampled_parameters = sample.sample_parameters(gal, t0=args.t0, Nsys=args.Nsys, \
+                                Mcomp_method=args.Mcomp_method, \
+                                Mns_method=args.Mns_method, \
+                                Mhe_method=args.Mhe_method, \
+                                Apre_method=args.Apre_method, \
+                                epre_method=args.epre_method, \
+                                Vkick_method=args.Vkick_method, \
+                                R_method=args.R_method, \
+                                params_dict = params_dict, \
+                                samples = args.samples_path, \
+                                verbose = args.verbose)
+        systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
+        # implement the supernova
+        systems.SN()
+        # check if the systems survived the supernova, and return survival fraction
+        survival_fraction = systems.check_survival()
+        # calculate the pre-SN galactic velocity
+        systems.galactic_velocity(gal, args.t0)
+        # transform the systemic velocity into the galactic frame and add pre-SN velocity
+        systems.galactic_frame()
+        # calculate the inspiral time for systems that survived
+        tH_inspiral_fraction = systems.inspiral_time()
 
 
-    # sample system parameters
-    systems = system.Systems(sampled_parameters, verbose=args.verbose)
+    ### otherwise, we'll just sample R and Vsys
+    else:
+        print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
+        
+        sampled_parameters = sample.sample_Vsys_R(gal, t0=args.t0, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, verbose=args.verbose)
+        # initialize system class
+        systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
+        # calculate the pre-SN galactic velocity
+        systems.galactic_velocity(gal, args.t0)
+        # project systemic velocity into galactic coordinates... FIXME
+        systems.decompose_Vsys()
 
-    # implement the supernova
-    systems.SN()
-
-    # check if the systems survived the supernova, and return survival fraction
-    survival_fraction = systems.check_survival()
-
-    # calculate the pre-SN galactic velocity
-    systems.galactic_velocity(gal, args.t0)
-
-    # transform the systemic velocity into the galactic frame and add pre-SN velocity
-    systems.galactic_frame()
-
-    # calculate the inspiral time for systems that survived
-    tH_inspiral_fraction = systems.inspiral_time()
+    import pdb; pdb.set_trace()
     
     # do evolution of each tracer particle
     systems.evolve(gal, args.t0, multiproc=args.multiproc, \
