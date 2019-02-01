@@ -185,8 +185,7 @@ def main(args):
         # project systemic velocity into galactic coordinates... FIXME
         systems.decompose_Vsys()
 
-    import pdb; pdb.set_trace()
-    
+
     # do evolution of each tracer particle
     systems.evolve(gal, args.t0, multiproc=args.multiproc, \
                         int_method=args.int_method, \
@@ -203,8 +202,6 @@ def main(args):
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))
-
-    pdb.set_trace()
 
 
 # MAIN FUNCTINON
