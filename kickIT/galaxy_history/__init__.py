@@ -11,6 +11,7 @@ import time
 import pandas as pd
 from scipy.interpolate import interp1d
 import multiprocessing
+from functools import partial
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import astropy as ap
@@ -43,7 +44,7 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, name=None, multiproc=None, verbose=False):
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=100, name=None, multiproc=None, verbose=False):
         """All input parameters should be in CGS units!
         """
 
@@ -62,7 +63,7 @@ class GalaxyHistory:
 
         # Disk height points at which to construct the interpolant, in pc
         self.NUM_HEIGHTS = Zgrid
-        self.HEIGHTS_RANGE = np.array([0,1e1]) * KPC   # cm
+        self.HEIGHTS_RANGE = np.array([0,1e2]) * KPC   # cm
 
         # Initialize cosmology
         cosmo = cosmology.Cosmology()
@@ -450,7 +451,7 @@ class GalaxyHistory:
         # combine all the potentials
         interp_data=[]
         for idx, pot in enumerate(self.full_potentials_natural):
-            interp_data.append([self.full_potentials_natural[:(idx+1)], logrs, zs])
+            interp_data.append([self.full_potentials_natural[:(idx+1)]])
 
 
         # enable multiprocessing, if specified
@@ -460,11 +461,12 @@ class GalaxyHistory:
             else:
                 mp = int(multiproc)
 
-            p = multiprocessing.Pool(mp)
+            pool = multiprocessing.Pool(mp)
+            func = partial(interp, rgrid=logrs, zgrid=zs)
 
             start = time.time()
             print('Parallelizing interpolations over {0:d} cores...\n'.format(mp))
-            interpolated_potentials = p.map(interp, interp_data)
+            interpolated_potentials = pool.map(func, interp_data)
             stop = time.time()
             print('   finished! It took {0:0.2f}s\n'.format(stop-start))
             
@@ -473,10 +475,11 @@ class GalaxyHistory:
         else:
             print('Interpolating potentials in serial...\n')
             interpolated_potentials=[]
+            func = partial(interp, rgrid=logrs, zgrid=zs)
             for ii, data in enumerate(interp_data):
 
                 start = time.time()
-                ip = interp(data)
+                ip = func(data)
                 end = time.time()
                 if self.VERBOSE == True:
                     print('   interpolated potential for step {0:d} (z={1:0.2f}) created in {2:0.2f}s...'.format(ii,self.redz[ii],end-start))
@@ -507,12 +510,12 @@ class GalaxyHistory:
                 
                 
 # define interpolating function
-def interp(interp_data, ro=_ro, vo=_vo):
+def interp(interp_data, rgrid, zgrid, ro=_ro, vo=_vo):
     pot = interp_data[0]
     logrs = interp_data[1]
     zs = interp_data[2]
 
-    ip = interpRZPotential(pot, rgrid=logrs, zgrid=zs, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
+    ip = interpRZPotential(pot, rgrid=rgrid, zgrid=zgrid, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
     return ip
 
 
