@@ -179,7 +179,7 @@ class Systems:
 
 
 
-    def galactic_velocity(self, gal, t0, ro=8, vo=220):
+    def galactic_velocity(self, gal, t0, fixed_potential, ro=8, vo=220):
         """
         Calculates the pre-SN galactic velocity for the tracer particles at their initial radius R. 
         """
@@ -188,12 +188,17 @@ class Systems:
 
         # Using galpy's vcirc method, we can easily calculate the rotation velocity at any R
         # Note we use the combination of *all* potentials up to the timestep t0
+        if fixed_potential:
+            t0_pot = len(gal.times)-2
+        else:
+            t0_pot = t0
+
         if gal.interp:
             ro_cgs = ro * u.kpc.to(u.cm)
             vo_cgs = vo * u.km.to(u.cm)
 
             R_vals = self.R / ro_cgs
-            full_pot = gal.interpolated_potentials[t0]
+            full_pot = gal.interpolated_potentials[t0_pot]
             Vcirc = gp_vcirc(full_pot, R_vals)
 
             Vcirc = Vcirc.value*u.km.to(u.cm)
@@ -201,18 +206,18 @@ class Systems:
 
         else:
             R_vals = self.R*u.cm
-            full_pot = gal.full_potentials[:(t0+1)]
+            full_pot = gal.full_potentials[:(t0_pot+1)]
             Vcirc = gp_vcirc(full_pot, R_vals)
             self.Vcirc = Vcirc.to(u.cm/u.s).value
 
         
         if not gal.interp:
         # Just to have them, calculate the circular velocity of each component as well (only do this if we choose not to do the quick interpolation)
-            Vcirc_stars = gp_vcirc(gal.stars_potentials[:(t0+1)], self.R*u.cm)
+            Vcirc_stars = gp_vcirc(gal.stars_potentials[:(t0_pot+1)], self.R*u.cm)
             self.Vcirc_stars = Vcirc_stars.to(u.cm/u.s).value
-            Vcirc_gas = gp_vcirc(gal.gas_potentials[:(t0+1)], self.R*u.cm)
+            Vcirc_gas = gp_vcirc(gal.gas_potentials[:(t0_pot+1)], self.R*u.cm)
             self.Vcirc_gas = Vcirc_gas.to(u.cm/u.s).value
-            Vcirc_dm = gp_vcirc(gal.dm_potentials[:(t0+1)], self.R*u.cm)
+            Vcirc_dm = gp_vcirc(gal.dm_potentials[:(t0_pot+1)], self.R*u.cm)
             self.Vcirc_dm = Vcirc_dm.to(u.cm/u.s).value
             
 
@@ -322,7 +327,7 @@ class Systems:
 
     
 
-    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None):
+    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
@@ -361,7 +366,7 @@ class Systems:
 
             # initialize the parallelization, and specify function arguments
             pool = multiprocessing.Pool(mp)
-            func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tint_max=Tint_max, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, VERBOSE=self.VERBOSE)
+            func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tint_max=Tint_max, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, fixed_potential=fixed_potential, VERBOSE=self.VERBOSE)
 
             start = time.time()
             print('Parallelizing integration of the orbits over {0:d} cores...'.format(mp))
@@ -383,7 +388,7 @@ class Systems:
 
             for system in systems_info:
 
-                func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tint_max=Tint_max, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, VERBOSE=self.VERBOSE)
+                func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tint_max=Tint_max, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, fixed_potential=fixed_potential,VERBOSE=self.VERBOSE)
                 X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset,merger_redz = func(system)
 
                 Xs.append(X)
@@ -448,7 +453,7 @@ class Systems:
 
 
 
-def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, VERBOSE=False):
+def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False, VERBOSE=False):
     """Function for integrating orbits. 
 
     If Tinsp_lim==False, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
@@ -515,6 +520,12 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
 
         while tt < (len(times)-1):
 
+            # if potential is held fixed, 'tt_pot' is the last timestep
+            if fixed_potential:
+                tt_pot = len(times)-2
+            else:
+                tt_pot = tt
+
             # first, transform the post-SN systemic velocity into cylindrical coordinates
             if tt==t0:
                 # by construction, the systems start in the galactic plane, at x=R, y=0, and therefore phi=0
@@ -555,12 +566,12 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                 # initialize the orbit and integrate, store redshift of merger
                 if interp:
                     orb = gp_orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
-                    orb.integrate(ts, interpolated_potentials[tt], method=int_method)
+                    orb.integrate(ts, interpolated_potentials[tt_pot], method=int_method)
                     age = utils.Tcgs_to_nat(times[t0])+Tinsp
                     merger_redz = float(cosmo.tage_to_z(utils.Tnat_to_cgs(age)))
                 else:
                     orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
-                    orb.integrate(ts, full_potentials[:(tt+1)], method=int_method)
+                    orb.integrate(ts, full_potentials[:(tt_pot+1)], method=int_method)
                     age = times[t0]+Tinsp
                     merger_redz = float(cosmo.tage_to_z(age))
 
@@ -589,10 +600,10 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
             # initialize the orbit and integrate
             if interp:
                 orb = gp_orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
-                orb.integrate(ts, interpolated_potentials[tt], method=int_method)
+                orb.integrate(ts, interpolated_potentials[tt_pot], method=int_method)
             else:
                 orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
-                orb.integrate(ts, full_potentials[:(tt+1)], method=int_method)
+                orb.integrate(ts, full_potentials[:(tt_pot+1)], method=int_method)
 
 
             # if it evolved until the time of the sGRB, end the integration

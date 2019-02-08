@@ -10,7 +10,7 @@ from astropy.table import Table
 from . import galaxy_history
 
 
-def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian', Mhe_method='uniform', Apre_method='uniform', epre_method='circularized', Vkick_method='maxwellian', R_method='sfr', params_dict=None, samples=None, verbose=False):
+def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian', Mhe_method='uniform', Apre_method='uniform', epre_method='circularized', Vkick_method='maxwellian', R_method='sfr', params_dict=None, samples=None, fixed_potential=False, verbose=False):
     """
     Calls all the sampling functions defined below. 
     Returns a dataframe with the sampled parameters. 
@@ -37,7 +37,7 @@ def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='ga
     bin_params['Apre'] = sample_Apre(Nsys, Amin=params_dict['Apre_min'], Amax=params_dict['Apre_max'], method=Apre_method, mean=params_dict['Apre_mean'], samples=popsynth_data)
     bin_params['epre'] = sample_epre(Nsys, method=epre_method, samples=popsynth_data)
     bin_params['Vkick'] = sample_Vkick(Nsys, Vmin=params_dict['Vkick_min'], Vmax=params_dict['Vkick_max'], method=Vkick_method, sigma=params_dict['Vkick_sigma'], samples=popsynth_data)
-    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method, mean=params_dict['R_mean'], samples=popsynth_data)
+    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method, mean=params_dict['R_mean'], samples=popsynth_data, fixed_potential=fixed_potential)
 
     if verbose:
         print('Parameters sampled according to the following methods:')
@@ -332,7 +332,7 @@ def sample_Vkick(Nsys, Vmin=0, Vmax=1000, method='maxwellian', sigma=265, sample
         
 
 
-def sample_R(Nsys, gal, t0, method='sfr', mean=3, samples=None):
+def sample_R(Nsys, gal, t0, method='sfr', mean=3, samples=None, fixed_potential=False):
     """
     Samples the galactic radius at which to initiate the tracer particles
     Inputs in units kpc
@@ -351,6 +351,10 @@ def sample_R(Nsys, gal, t0, method='sfr', mean=3, samples=None):
         mstar_final = gal.mass_stars[len(gal.times)-1]
         _, R_final = galaxy_history.baryons.sfr_rad_dist(gal.rads, mstar_final)
         R_scaling = gal.obs_rad_eff / R_final
+
+        # if fixed_potential, set t0 to the last step
+        if fixed_potential:
+            t0 = len(gal.times)-1
 
         mstar = gal.mass_stars[t0]
         rs = galaxy_history.baryons.sfr_disk_rad(mstar, R_scaling) * u.cm.to(u.kpc)
@@ -380,7 +384,7 @@ def sample_R(Nsys, gal, t0, method='sfr', mean=3, samples=None):
 
 ### Option B: separate out the progenitor sampling and the evolution ###
 
-def sample_Vsys_R(gal, t0=0, Nsys=1, Vsys_range=(0,1000), R_method='sfr', verbose=False):
+def sample_Vsys_R(gal, t0=0, Nsys=1, Vsys_range=(0,1000), R_method='sfr', fixed_potential=False, verbose=False):
     """
     Samples only radii and systemic velocity. 
 
@@ -394,7 +398,7 @@ def sample_Vsys_R(gal, t0=0, Nsys=1, Vsys_range=(0,1000), R_method='sfr', verbos
     # sample Vsys
     bin_params['Vsys'] = np.random.uniform(Vsys_range[0],Vsys_range[1], size=Nsys) * u.km.to(u.cm)
     # sample R
-    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method)
+    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method, fixed_potential=fixed_potential)
     # fix Tinsp and SNsurvive
     bin_params['Tinsp'] = 14.0 * u.Gyr.to(u.s)
     bin_params['SNsurvive'] = True

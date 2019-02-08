@@ -45,15 +45,16 @@ def parse_commandline():
 
     # paths to data files
     parser.add_argument('--interp-dirpath', type=str, help="Path to the directory that holds interpolation files. Default is None.")
+    parser.add_argument('--output-dirpath', type=str, default='./output_files/', help="Path to the output hdf file. File has key names tracers. Default is './output_files/'.")
     parser.add_argument('--sgrb-path', type=str, default='./data/sgrb_hostprops_offsets.txt', help="Path to the table with sGRB host galaxy information. Default is './data/sgrb_hostprops_offsets.txt'.")
     parser.add_argument('--samples-path', type=str, default='./data/example_bns.dat', help="Path to the samples from population synthesis for generating the initial population of binaries. Default is './data/example_bns.dat'.")
-    parser.add_argument('--output-dirpath', type=str, default='./output_files/', help="Path to the output hdf file. File has key names tracers. Default is './output_files/'.")
 
     # galaxy arguments
     parser.add_argument('--disk-profile', type=str, default='DoubleExponential', help="Profile for the galactic disk, named according to Galpy potentials. Default is 'DoubleExponential'.")
     parser.add_argument('--bulge-profile', type=str, default=None, help="Profile for the galactic bulge, named according to Galpy potentials. Default is None.")
     parser.add_argument('--dm-profile', type=str, default='NFW', help="Profile for the DM, named according to Galpy potentials. Default is NFW.")
     parser.add_argument('--z-scale', type=float, default=0.05, help="Fraction of the galactic scale radius for the scale height above/below the disk. Default=0.05.")
+    parser.add_argument('--fixed-potential', action='store_true', help="Fixes the galactic potential to the potential of the galaxy at the time of the sGRB. Also samples the location of the system according to this galactic model. Default=False.")
 
     # sampling arguments
     parser.add_argument('--sample-progenitor-props', action='store_true',help="Indicates whether to use specific sampling for the progenitor properties defined in sample.py (i.e., fro pop synth). If not specified, a grid in *only* R (based on the SF profile) and Vsys (with random initial direction for Vsys) will be used for initializing the particles. Default=False.")
@@ -163,6 +164,7 @@ def main(args):
                                 R_method=args.R_method, \
                                 params_dict = params_dict, \
                                 samples = args.samples_path, \
+                                fixed_potential = args.fixed_potential, \
                                 verbose = args.verbose)
         systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
         # implement the supernova
@@ -170,7 +172,7 @@ def main(args):
         # check if the systems survived the supernova, and return survival fraction
         survival_fraction = systems.check_survival()
         # calculate the pre-SN galactic velocity
-        systems.galactic_velocity(gal, args.t0)
+        systems.galactic_velocity(gal, args.t0, args.fixed_potential)
         # transform the systemic velocity into the galactic frame and add pre-SN velocity
         systems.galactic_frame()
         # calculate the inspiral time for systems that survived
@@ -181,11 +183,11 @@ def main(args):
     else:
         print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
         
-        sampled_parameters = sample.sample_Vsys_R(gal, t0=args.t0, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, verbose=args.verbose)
+        sampled_parameters = sample.sample_Vsys_R(gal, t0=args.t0, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_potential=args.fixed_potential, verbose=args.verbose)
         # initialize system class
         systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
         # calculate the pre-SN galactic velocity
-        systems.galactic_velocity(gal, args.t0)
+        systems.galactic_velocity(gal, args.t0, args.fixed_potential)
         # project systemic velocity into galactic coordinates... FIXME
         systems.decompose_Vsys()
 
@@ -198,7 +200,8 @@ def main(args):
                         Nsteps_per_bin=args.Nsteps_per_bin, \
                         save_traj=args.save_traj, \
                         downsample=args.downsample, \
-                        outdir = args.output_dirpath)
+                        outdir = args.output_dirpath, \
+                        fixed_potential = args.fixed_potential)
 
     # write data to output file
     systems.write(args.output_dirpath, args.t0)
