@@ -38,8 +38,8 @@ def parse_commandline():
 
     # defining grid properties
     parser.add_argument('-T', '--Tsteps', type=int, default=100, help="Number of discrete time (redshift) bins to evolve systems in. Default is 100.")
-    parser.add_argument('-rg', '--Rgrid', type=int, default=100, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
-    parser.add_argument('-zg', '--Zgrid', type=int, default=50, help="Number of gridpoints for the Z-component of the interpolation model. Default is 50.") 
+    parser.add_argument('-rg', '--Rgrid', type=int, default=500, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
+    parser.add_argument('-zg', '--Zgrid', type=int, default=300, help="Number of gridpoints for the Z-component of the interpolation model. Default is 50.") 
     parser.add_argument('--Rgrid-max', type=float, default=1e3, help="Maximum R value for interpolated potentials. Default is 1e3.")
     parser.add_argument('--Zgrid-max', type=float, default=1e2, help="Maximum Z value for interpolated potentials. Default is 1e2.")
 
@@ -120,6 +120,8 @@ def main(args):
                         obs_redz = float(grb_props['z']),\
                         obs_age_stars = float(grb_props['PopAge'] * u.Gyr.to(u.s)),\
                         obs_rad_eff = float(grb_props['r_e'] * u.kpc.to(u.cm)),\
+                        obs_rad_offset = float(grb_props['deltaR'] * u.kpc.to(u.cm)),\
+                        obs_rad_offset_error = float(grb_props['deltaR_err'] * u.kpc.to(u.cm)),\
                         obs_gal_sfr = float(grb_props['SFR'] * (u.Msun.to(u.g))/u.yr.to(u.s)),\
                         disk_profile = args.disk_profile,\
                         bulge_profile = args.bulge_profile,\
@@ -166,11 +168,13 @@ def main(args):
                                 samples = args.samples_path, \
                                 fixed_potential = args.fixed_potential, \
                                 verbose = args.verbose)
-        systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
+        systems = system.Systems(args.t0, sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
         # implement the supernova
         systems.SN()
         # check if the systems survived the supernova, and return survival fraction
         survival_fraction = systems.check_survival()
+        # calculate the instantaneous particle escape velocities
+        systems.escape_velocity(gal, args.t0)
         # calculate the pre-SN galactic velocity
         systems.galactic_velocity(gal, args.t0, args.fixed_potential)
         # transform the systemic velocity into the galactic frame and add pre-SN velocity
@@ -185,7 +189,9 @@ def main(args):
         
         sampled_parameters = sample.sample_Vsys_R(gal, t0=args.t0, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_potential=args.fixed_potential, verbose=args.verbose)
         # initialize system class
-        systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
+        systems = system.Systems(args.t0, sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
+        # calculate the instantaneous particle escape velocities
+        systems.escape_velocity(gal, args.t0)
         # calculate the pre-SN galactic velocity
         systems.galactic_velocity(gal, args.t0, args.fixed_potential)
         # project systemic velocity into galactic coordinates... FIXME

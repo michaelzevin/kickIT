@@ -16,6 +16,7 @@ from scipy.interpolate import interp1d
 
 from galpy.potential import vcirc as gp_vcirc
 from galpy.orbit import Orbit as gp_orbit
+from galpy.potential import evaluatePotentials
 
 from kickIT.galaxy_history import cosmology
 from . import utils
@@ -31,7 +32,7 @@ class Systems:
     System starts on a circular orbit in the r-phi (x-y) plane, on the x-axis (phi=0) and moving in the positive y direction. 
     Galaxy projection taken account when determining radial offset at merger. 
     """
-    def __init__(self, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None, sample_progenitor_props=False, verbose=False):
+    def __init__(self, t0, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None, sample_progenitor_props=False, verbose=False):
 
         self.VERBOSE = verbose
 
@@ -52,6 +53,7 @@ class Systems:
             self.SNsurvive = np.asarray(sampled_parameters['SNsurvive'])
         
 
+        self.t0 = t0
         self.Nsys = len(self.R)
 
         # initialize random angles (only need SN angles if implementing the SN)
@@ -177,6 +179,44 @@ class Systems:
         survival_fraction = float(np.sum(self.SNsurvive))/float(len(self.SNsurvive))
         return survival_fraction
 
+
+
+    def escape_velocity(self, gal, t0, ro=8, vo=220):
+        """
+        Calculates the escape velocity for each particle at their respective radius.
+        """
+
+        print('Calculating particle escape velocities...\n')
+
+        # Read in Rvals, assuming particles start in the plane
+        R_vals = self.R * u.cm.to(u.kpc)
+        z_vals = np.zeros_like(R_vals)
+
+        # specify radius and height at "infinity" in kpc
+        R_inf = 1000000
+        z_inf = 1000000
+
+        if gal.interp:
+            full_pot = gal.interpolated_potentials[t0]
+            pot_at_inf = evaluatePotentials(full_pot, R=R_inf/ro, z=z_inf/ro)
+
+            Vesc = np.sqrt(2*\
+                (pot_at_inf - evaluatePotentials(full_pot, R_vals/ro, z=z_vals/ro)))
+            Vesc = Vesc.value*u.km.to(u.cm)
+            self.Vesc = Vesc
+
+        else:
+            full_pot = gal.full_potentials[:(t0+1)]
+            pot_at_inf = evaluatePotentials(full_pot, R_inf*u.kpc, z_inf*u.kpc)
+
+            Vesc = np.sqrt(2*\
+                (pot_at_inf - evaluatePotentials(full_pot, R_vals*u.kpc, z_vals*u.kpc)))
+            self.Vesc = Vesc.to(u.cm/u.s).value
+
+        return
+
+
+        
 
 
     def galactic_velocity(self, gal, t0, fixed_potential, ro=8, vo=220):
@@ -484,7 +524,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
     # gal info
     interp = gal.interp
     times = gal.times
-    redz=gal.redz
+    redz = gal.redz
     interpolated_potentials = gal.interpolated_potentials
     full_potentials = gal.full_potentials
     

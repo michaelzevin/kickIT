@@ -44,7 +44,7 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, Rgrid_max=1e3, Zgrid_max=1e2, name=None, multiproc=None, verbose=False):
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_rad_offset, obs_rad_offset_error, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, Rgrid_max=1e3, Zgrid_max=1e2, name=None, multiproc=None, verbose=False):
         """All parameters are converted to CGS units!
         """
 
@@ -76,6 +76,8 @@ class GalaxyHistory:
         self.obs_redz = obs_redz
         self.obs_age_stars = obs_age_stars
         self.obs_rad_eff = obs_rad_eff
+        self.obs_rad_offset = obs_rad_offset
+        self.obs_rad_offset_error = obs_rad_offset_error
         self.obs_gal_sfr = obs_gal_sfr
         self.disk_profile = disk_profile
         self.bulge_profile = bulge_profile
