@@ -146,8 +146,7 @@ class GalaxyHistory:
         if self.VERBOSE:
             print("During quiescent state, galaxy grew by {:.2e} (dM={:.2e} [Msol])".format(
             frac, growth_quiescent/MSOL))
-        # For the model to be consistent, the fractional growth during "quiescent" phase should be
-        # negligible
+        # For the model to be consistent, the fractional growth during "quiescent" phase should be negligible
         if frac > 0.1:
             warnings.warn("Significant galaxy growth during 'quiescent' phase! Inconsistency?")
 
