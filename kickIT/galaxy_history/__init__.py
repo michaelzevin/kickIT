@@ -44,7 +44,7 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_rad_offset, obs_rad_offset_error, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, z_scale=None, interp_dirpath=None, Tsteps=100, Rgrid=100, Zgrid=50, Rgrid_max=1e3, Zgrid_max=1e2, name=None, multiproc=None, verbose=False):
+    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_rad_offset, obs_rad_offset_error, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, interp=None, z_scale=None, differential_prof=False, Tsteps=100, Rgrid=100, Zgrid=50, Rgrid_max=1e3, Zgrid_max=1e2, name=None, multiproc=None, verbose=False):
         """All parameters are converted to CGS units!
         """
 
@@ -83,6 +83,7 @@ class GalaxyHistory:
         self.bulge_profile = bulge_profile
         self.dm_profile = dm_profile
         self.z_scale = z_scale
+        self.differential_prof = differential_prof
         self.name = name
 
         # Construct sampling times
@@ -111,13 +112,19 @@ class GalaxyHistory:
         self.sfr_weights = self.gal_sfr / np.sum(self.gal_sfr)
 
         # Calculate galactic potentials vs time
-        self.calc_potentials_vs_time()
-        self.calc_potentials_vs_time(method='natural')
+        self.calc_potentials_vs_time(self.differential_prof)
+        self.calc_potentials_vs_time(self.differential_prof, method='natural')
 
         # Interpoate the potentials (need to be in natural units)
-        if interp_dirpath:
+        # FIXME: just read in the interpolated pickle files and overwrite the galactic potentials
+        if interp:
             self.interp = True
-            self.calc_interpolated_potentials(interp_dirpath, multiproc=multiproc)
+            self.calc_interpolated_potentials(interp, multiproc=multiproc)
+        else:
+            self.interp = False
+            if differential_prof==True:
+                raise ValueError("If you're using differential stellar profiles, you better be using an interpolated potential instance!!!")
+                 
 
         return
 
@@ -311,11 +318,13 @@ class GalaxyHistory:
         return
 
 
-    def calc_potentials_vs_time(self, method='astropy'):
+    def calc_potentials_vs_time(self, differential=False, method='astropy'):
         """Calculates the gravitational potentials of each component for all redshift steps using galpy
         The gas and stars are represented by a double exponential profile by default. 
         The DM is represented by a NFW profile. 
-        Can onstruct potential in both astropy units (method=='astropy') or galpy's 'natural' units (method=='natural') for the purposes of interpolation. 
+        Can construct potential in both astropy units (method=='astropy') or galpy's 'natural' units (method=='natural') for the purposes of interpolation. 
+
+        Stars can be calculated using a differential mass profile with varying scale radii, but in this case it is best to interpolate the potentials first
         """
 
         if method == 'astropy':
@@ -338,28 +347,28 @@ class GalaxyHistory:
         # iterate over each time-step until when the sgrb occurred
         for ii, zz in enumerate(self.redz):
 
+            # --- get the gas and DM masses at this step
+            if method=='astropy':
+                mgas = (self.mass_gas[ii]) * u.g
+                mdm = (self.mass_dm[ii]) * u.g
+            elif method=='natural':
+                mgas = utils.Mcgs_to_nat(self.mass_gas[ii])
+                mdm = utils.Mcgs_to_nat(self.mass_dm[ii])
+            
 
-            # calculate the new amount of mass at this timestep
-            if ii == 0:
-                # first timestep formed from nothing
+            # --- if differential==False, just take the total stellar mass at each timestep
+            # --- this is also done for the first differential timestep
+            if (differential==False) or (ii == 0):
                 if method=='astropy':
                     mstar = (self.mass_stars[ii]) * u.g
-                    mgas = (self.mass_gas[ii]) * u.g
-                    mdm = (self.mass_dm[ii]) * u.g
                 elif method=='natural':
                     mstar = utils.Mcgs_to_nat(self.mass_stars[ii])
-                    mgas = utils.Mcgs_to_nat(self.mass_gas[ii])
-                    mdm = utils.Mcgs_to_nat(self.mass_dm[ii])
-
             else:
                 if method=='astropy':
                     mstar = (self.mass_stars[ii] - self.mass_stars[ii-1]) * u.g
-                    mgas = (self.mass_gas[ii] - self.mass_gas[ii-1]) * u.g
-                    mdm = (self.mass_dm[ii] - self.mass_dm[ii-1]) * u.g
                 elif method=='natural':
                     mstar = utils.Mcgs_to_nat(self.mass_stars[ii] - self.mass_stars[ii-1])
-                    mgas = utils.Mcgs_to_nat(self.mass_gas[ii] - self.mass_gas[ii-1])
-                    mdm = utils.Mcgs_to_nat(self.mass_dm[ii] - self.mass_dm[ii-1])
+
 
             # get the scale lengths for the baryons and halo at this redshift step
             if method=='astropy':
@@ -396,7 +405,12 @@ class GalaxyHistory:
             stars_potentials.append(stars_potential)
             gas_potentials.append(gas_potential)
             dm_potentials.append(dm_potential)
-            full_potentials.append([stars_potential,gas_potential,dm_potential])
+            # --- if differential is specified, we use *all* the stellar profiles up to this point
+            if differential==True:
+                combined_potentials = stars_potentials.extend(gas_potential, dm_potential)
+            else:
+                combined_potentials = [stars_potential,gas_potential,dm_potentials]
+            full_potentials.append(combined_potentials)
 
 
         if method=='astropy':

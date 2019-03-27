@@ -44,7 +44,7 @@ def parse_commandline():
     parser.add_argument('--Zgrid-max', type=float, default=1e2, help="Maximum Z value for interpolated potentials. Default is 1e2.")
 
     # paths to data files
-    parser.add_argument('--interp-dirpath', type=str, help="Path to the directory that holds interpolation files. Default is None.")
+    parser.add_argument('--interp', type=str, default=None, help="Path to the potential interpolation file you wish to use. Default is None.")
     parser.add_argument('--output-dirpath', type=str, default='./output_files/', help="Path to the output hdf file. File has key names tracers. Default is './output_files/'.")
     parser.add_argument('--sgrb-path', type=str, default='./data/sgrb_hostprops_offsets.txt', help="Path to the table with sGRB host galaxy information. Default is './data/sgrb_hostprops_offsets.txt'.")
     parser.add_argument('--samples-path', type=str, default='./data/example_bns.dat', help="Path to the samples from population synthesis for generating the initial population of binaries. Default is './data/example_bns.dat'.")
@@ -54,6 +54,7 @@ def parse_commandline():
     parser.add_argument('--bulge-profile', type=str, default=None, help="Profile for the galactic bulge, named according to Galpy potentials. Default is None.")
     parser.add_argument('--dm-profile', type=str, default='NFW', help="Profile for the DM, named according to Galpy potentials. Default is NFW.")
     parser.add_argument('--z-scale', type=float, default=0.05, help="Fraction of the galactic scale radius for the scale height above/below the disk. Default=0.05.")
+    parser.add_argument('--differential-prof', action='store_true', help="Uses a differential stellar profile, creating a unique galpy potential at each timestep according to the updated scale radius and accumulated mass. Default=False.")
     parser.add_argument('--fixed-potential', action='store_true', help="Fixes the galactic potential to the potential of the galaxy at the time of the sGRB. Also samples the location of the system according to this galactic model. Default=False.")
 
     # sampling arguments
@@ -104,17 +105,19 @@ def main(args):
     """
     start = time.time()
 
-    # construct pertinent directories
-    if not os.path.exists(args.interp_dirpath):
-        os.makedirs(args.interp_dirpath)
+    # --- construct pertinent directories
+    #if not os.path.exists(args.interp_dirpath):
+    #    os.makedirs(args.interp_dirpath)
     if not os.path.exists(args.output_dirpath):
         os.makedirs(args.output_dirpath)
 
-    # read sgrb hostprops table as pandas dataframe
+    # --- read sgrb hostprops table as pandas dataframe
     sgrb_host_properties = pd.read_table(args.sgrb_path, delim_whitespace=True, na_values='-')
     grb_props = sgrb_host_properties.loc[sgrb_host_properties['GRB'] == args.grb]
 
-    # get galaxy information
+
+
+    # --- construct galaxy class
     gal = galaxy_history.GalaxyHistory(\
                         obs_mass_stars = float(10**grb_props['log(M*)'] * u.Msun.to(u.g)),\
                         obs_redz = float(grb_props['z']),\
@@ -126,13 +129,14 @@ def main(args):
                         disk_profile = args.disk_profile,\
                         bulge_profile = args.bulge_profile,\
                         dm_profile = args.dm_profile,\
+                        interp = args.interp,\
                         z_scale = args.z_scale,\
-                        interp_dirpath = args.interp_dirpath,\
-                        Tsteps = args.Tsteps,\
-                        Rgrid = args.Rgrid,\
-                        Zgrid = args.Zgrid,\
-                        Rgrid_max = args.Rgrid_max,\
-                        Zgrid_max = args.Zgrid_max,\
+                        differential_prof = args.differential_prof,\
+                        #Tsteps = args.Tsteps,\
+                        #Rgrid = args.Rgrid,\
+                        #Zgrid = args.Zgrid,\
+                        #Rgrid_max = args.Rgrid_max,\
+                        #Zgrid_max = args.Zgrid_max,\
                         name = grb_props['GRB'].item(),\
                         multiproc = args.multiproc,\
                         verbose = args.verbose)
@@ -144,6 +148,10 @@ def main(args):
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[args.t0]))
 
 
+
+
+    # --- sample progenitor parameters
+
     # construct dict of params for sampling methods
     params_dict={
         'Mcomp_mean':args.Mcomp_mean, 'Mcomp_sigma':args.Mcomp_sigma, 
@@ -153,9 +161,9 @@ def main(args):
         'Vkick_sigma':args.Vkick_sigma, 'Vkick_min':args.Vkick_min, 'Vkick_max':args.Vkick_max,
         'R_mean':args.R_mean}
     
-    ### if we want to specifically sample the progenitor properties rather than just R and Vsys...
     if args.sample_progenitor_props:
-        # sample system parameters
+        # fully sample progenitor parameters
+        print('Fully sampling system parameters, determining systemic velocities and inspiral times...\n')
         sampled_parameters = sample.sample_parameters(gal, t0=args.t0, Nsys=args.Nsys, \
                                 Mcomp_method=args.Mcomp_method, \
                                 Mns_method=args.Mns_method, \
@@ -183,8 +191,8 @@ def main(args):
         tH_inspiral_fraction = systems.inspiral_time()
 
 
-    ### otherwise, we'll just sample R and Vsys
     else:
+        # sampling in only Vsys and Tinsp
         print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
         
         sampled_parameters = sample.sample_Vsys_R(gal, t0=args.t0, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_potential=args.fixed_potential, verbose=args.verbose)
@@ -194,11 +202,14 @@ def main(args):
         systems.escape_velocity(gal, args.t0)
         # calculate the pre-SN galactic velocity
         systems.galactic_velocity(gal, args.t0, args.fixed_potential)
-        # project systemic velocity into galactic coordinates... FIXME
+        # project systemic velocity into galactic coordinates
         systems.decompose_Vsys()
 
 
-    # do evolution of each tracer particle
+
+
+    # --- kinematically evolve the tracer particles
+
     systems.evolve(gal, args.t0, multiproc=args.multiproc, \
                         int_method=args.int_method, \
                         Tinsp_lim=args.Tinsp_lim, \
@@ -209,7 +220,9 @@ def main(args):
                         outdir = args.output_dirpath, \
                         fixed_potential = args.fixed_potential)
 
-    # write data to output file
+
+
+    # --- write data to output file and finish
     systems.write(args.output_dirpath, args.t0)
     gal.write(args.output_dirpath)
 

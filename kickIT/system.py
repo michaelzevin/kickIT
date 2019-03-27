@@ -193,8 +193,8 @@ class Systems:
         z_vals = np.zeros_like(R_vals)
 
         # specify radius and height at "infinity" in kpc
-        R_inf = 1000000
-        z_inf = 1000000
+        R_inf = 1000
+        z_inf = 1000
 
         if gal.interp:
             full_pot = gal.interpolated_potentials[t0]
@@ -525,8 +525,9 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
     interp = gal.interp
     times = gal.times
     redz = gal.redz
-    interpolated_potentials = gal.interpolated_potentials
     full_potentials = gal.full_potentials
+    if interp:
+        interpolated_potentials = gal.interpolated_potentials
     
     # initialize cosmology
     cosmo = cosmology.Cosmology()
@@ -581,7 +582,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                 Phi = Phi % (2*np.pi)
                 if not interp:
                     # convert from galpy's 'natural' units to cgs
-                    R,vR,vT,Z,vZ,Phi = orbit_nat_to_cgs(R,vR,vT,Z,vZ,Phi)
+                    R,vR,vT,Z,vZ,Phi = utils.orbit_nat_to_cgs(R,vR,vT,Z,vZ,Phi)
     
             # record the amount of time that passes in this step
             # compare the total time passed to the inspiral time of the system
@@ -590,7 +591,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                 dt = utils.Tcgs_to_nat(dt)
 
 
-            # see if the merger occurred during this step
+            # --- See if the merger occurred during this step
             # note that if Tinsp_lim=False, it will continue the integration until the time of the sGRB
             if (((T_elapsed+dt) > Tinsp) and INSP_FLAG==False):
 
@@ -611,7 +612,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                     merger_redz = float(cosmo.tage_to_z(utils.Tnat_to_cgs(age)))
                 else:
                     orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
-                    orb.integrate(ts, full_potentials[:(tt_pot+1)], method=int_method)
+                    orb.integrate(ts, full_potentials[(tt_pot+1)], method=int_method)
                     age = times[t0]+Tinsp
                     merger_redz = float(cosmo.tage_to_z(age))
 
@@ -628,7 +629,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                     break
 
 
-            # if it didn't merge, evolve until the next timestep
+            # --- If it didn't merge, evolve until the next timestep
             T_elapsed += dt
 
             # get timesteps for this integration (set to 1000 steps for now)
@@ -643,7 +644,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                 orb.integrate(ts, interpolated_potentials[tt_pot], method=int_method)
             else:
                 orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
-                orb.integrate(ts, full_potentials[:(tt_pot+1)], method=int_method)
+                orb.integrate(ts, full_potentials[(tt_pot+1)], method=int_method)
 
 
             # if it evolved until the time of the sGRB, end the integration
@@ -694,7 +695,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                 if interp:
                     int_times = times[t0]+utils.Tnat_to_cgs(T_elapsed+ts)
                 else:
-                    int_times = times[t0]+ts+T_elapsed
+                    int_times = times[t0]+ts.value+T_elapsed
                 time_traj.append(int_times)
 
             tt += 1
@@ -719,7 +720,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
         if interp:
             int_times = times[t0]+utils.Tnat_to_cgs(T_elapsed+ts)
         else:
-            int_times = times[t0]+ts+T_elapsed
+            int_times = times[t0]+ts.value+T_elapsed
         time_traj.append(int_times)
 
         # flatten and save trajectories
