@@ -12,8 +12,7 @@ import pandas as pd
 from scipy.interpolate import interp1d
 import multiprocessing
 from functools import partial
-import matplotlib as mpl
-import matplotlib.pyplot as plt
+
 import astropy as ap
 import astropy.units as u
 import astropy.constants as C
@@ -21,22 +20,26 @@ import astropy.constants as C
 from galpy.potential import RazorThinExponentialDiskPotential, DoubleExponentialDiskPotential, NFWPotential
 from galpy.potential import interpRZPotential
 
-# Set units here (standard in cgs)
-MSOL = u.M_sun.to(u.g)
-PC = u.pc.to(u.cm)
-YR = u.yr.to(u.s)
-
-KPC = 1e3 * PC
-GYR = 1e9 * YR
-GMSOL = 1e9 * MSOL
-
-# Set galpy internal units
-_ro = 8
-_vo = 220
-
 # Import of local modules must come after constants above
 from .. import utils
 from . import baryons, halos, cosmology
+
+
+# Specify initial redshift and number of timesteps
+REDZ_BEG = 4.0
+NUM_TIME_STEPS = 100
+
+# Specify parameters for the grid, in kpc
+NUM_RADS = 300
+RGRID_MAX = 1e3
+RADS_RANGE = np.array([1e-4,RGRID_MAX])*u.kpc
+
+NUM_HEIGHTS = 100
+ZGRID_MAX = 100
+HEIGHTS_RANGE = np.array([0,ZGRID_MAX])*u.kpc
+
+
+VERBOSE = True
 
 
 class GalaxyHistory:
@@ -44,73 +47,49 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_mass_stars, obs_redz, obs_age_stars, obs_rad_eff, obs_rad_offset, obs_rad_offset_error, obs_gal_sfr, disk_profile, dm_profile, bulge_profile=None, interp=None, z_scale=None, differential_prof=False, Tsteps=100, Rgrid=100, Zgrid=50, Rgrid_max=1e3, Zgrid_max=1e2, name=None, multiproc=None, verbose=False):
-        """All parameters are converted to CGS units!
+    def __init__(self, obs_props, disk_profile, dm_profile, smhm_relation='Guo', smhm_sigma=0.0, bulge_profile=None, z_scale=None, differential_prof=False, interp=None):
+        """Units are kept as astropy quantities for clarity!
         """
 
-        # Store if verbose
-        self.VERBOSE = verbose
-
-        # Redshift at which integration/data-arrays begin
-        self.REDZ_BEG = 4.0
-
-        # Number of time-steps between `REDZ_BEG` and redshift zero
-        self.NUM_TIME_STEPS = Tsteps
-
-        # Radial points at which to construct the interpolant, in pc
-        self.NUM_RADS = Rgrid
-        self.RGRID_MAX = int(Rgrid_max)
-        self.RADS_RANGE = np.array([1e-4,Rgrid_max]) * KPC   # cm
-
-        # Disk height points at which to construct the interpolant, in pc
-        self.NUM_HEIGHTS = Zgrid
-        self.ZGRID_MAX = int(Zgrid_max)
-        self.HEIGHTS_RANGE = np.array([0,Zgrid_max]) * KPC   # cm
-
-        # Initialize cosmology
-        cosmo = cosmology.Cosmology()
-        self.cosmo = cosmo
-
         # Read in observed parameters of the sGRB host
-        self.obs_mass_stars = obs_mass_stars
-        self.obs_redz = obs_redz
-        self.obs_age_stars = obs_age_stars
-        self.obs_rad_eff = obs_rad_eff
-        self.obs_rad_offset = obs_rad_offset
-        self.obs_rad_offset_error = obs_rad_offset_error
-        self.obs_gal_sfr = obs_gal_sfr
+        self.obs_props = obs_props
         self.disk_profile = disk_profile
-        self.bulge_profile = bulge_profile
         self.dm_profile = dm_profile
+        self.smhm_relation = smhm_relation
+        self.smhm_sigma = smhm_sigma
+        self.bulge_profile = bulge_profile
         self.z_scale = z_scale
         self.differential_prof = differential_prof
-        self.name = name
+
+        # Initiate cosmology
+        self.cosmo = cosmology.Cosmology()
+
 
         # Construct sampling times
-        self.time_beg = cosmo.age(self.REDZ_BEG).cgs.value
+        self.time_beg = self.cosmo.age(REDZ_BEG)
         # End time is the time at which the galaxy is observed (calculated from redshift)
-        self.time_end = cosmo.age(self.obs_redz).cgs.value
+        self.time_end = self.cosmo.age(obs_props['redz'])
         self.time_dur = self.time_end - self.time_beg
-        times = np.logspace(*np.log10([self.time_beg, self.time_end]), self.NUM_TIME_STEPS)
-        self.times = times
+        self.times = np.logspace(*np.log10([self.time_beg.value, self.time_end.value]), NUM_TIME_STEPS)*u.Gyr
 
-        # Calculate array of redshifts corresponding to each `times` value (age of the universe)
-        self.redz = cosmo.tage_to_z(self.times)
-        if self.VERBOSE:
-            textr = np.array([times.min(), times.max()])
-            print("\nTimes: {:3d} between [{:.1e}, {:.1e}] Gyr (z={:.1e}, {:.1e})".format(
-                times.size, *textr/GYR, self.redz.max(), self.redz.min()))
+        # Calculate array of redshifts corresponding to each `times` value (age of the universe, in seconds)
+        self.redz = self.cosmo.tage_to_z(self.times.to(u.s))
+        if VERBOSE:
+            print("\nTimes: {:3d} between [{:.1e}, {:.1e}] (z={:.1e}, {:.1e})".format(self.times.size, self.times.min(), self.times.max(), self.redz.max(), self.redz.min()))
 
         # Construct sampling of radii for constructing interpolants (flat in log)
-        self.rads = 10**np.linspace(*np.log10(self.RADS_RANGE), self.NUM_RADS)
+        self.rads = np.logspace(*np.log10(RADS_RANGE.value), NUM_RADS)*u.kpc
 
-        # Calculate galaxy properties vs time
+        # Calculate galaxy component masses vs time
         self.calc_total_masses_vs_time()
+
+        # Calculate the component mass profiles vs time (used for checking against galpy)
         self.calc_mass_profiles_vs_time()
 
         # Calculate the SFR weights at each timestep
-        self.sfr_weights = self.gal_sfr / np.sum(self.gal_sfr)
+        self.sfr_weights = (self.gal_sfr / np.sum(self.gal_sfr)).value
 
+        import pdb; pdb.set_trace()
         # Calculate galactic potentials vs time
         self.calc_potentials_vs_time(self.differential_prof)
         self.calc_potentials_vs_time(self.differential_prof, method='natural')
@@ -134,38 +113,36 @@ class GalaxyHistory:
         """
 
         # Initialize mass and sfr arrays
-        mass_stars = np.zeros_like(self.times)
-        gal_sfr = np.zeros_like(self.times)
+        mass_stars = np.zeros(len(self.times))*u.Msun
+        gal_sfr = np.zeros(len(self.times))*u.Msun/u.yr
 
         # Find time and redshift of SFR peak from stellar-age of galaxy
-        time_sfr_peak = self.time_end - self.obs_age_stars
-        redz_sfr_peak = float(self.cosmo.tage_to_z(time_sfr_peak))
-        if self.VERBOSE:
-            print("Time of peak SFR: {:.2f} [Gyr] (z={:.2f})".format(time_sfr_peak/GYR, redz_sfr_peak))
+        time_sfr_peak = self.time_end - self.obs_props['age_stars']
+        redz_sfr_peak = float(self.cosmo.tage_to_z(time_sfr_peak.to(u.s)))
+        if VERBOSE:
+            print("Time of peak SFR: {:.2f} (z={:.2f})".format(time_sfr_peak, redz_sfr_peak))
 
         # Assume constant SFR from time of observation, back to SFR peak
         idx = (self.times >= time_sfr_peak)
-        gal_sfr[idx] = self.obs_gal_sfr
-        mass_stars[:] = self.obs_mass_stars
-        mass_stars[idx] -= self.obs_gal_sfr * (self.time_end - self.times[idx])
-        growth_quiescent = self.obs_gal_sfr * (self.time_end - time_sfr_peak)
+        gal_sfr[idx] = self.obs_props['gal_sfr']
+        mass_stars[:] = self.obs_props['mass_stars']
+        mass_stars[idx] -= self.obs_props['gal_sfr'] * (self.time_end - self.times[idx])
+        growth_quiescent = (self.obs_props['gal_sfr'] * (self.time_end - time_sfr_peak)).decompose().to(u.Msun)
         frac = growth_quiescent / mass_stars[-1]
-        if self.VERBOSE:
-            print("During quiescent state, galaxy grew by {:.2e} (dM={:.2e} [Msol])".format(
-            frac, growth_quiescent/MSOL))
+        if VERBOSE:
+            print("During quiescent state, galaxy grew by {:.2e} (dM={:.2e})".format(frac, growth_quiescent))
         # For the model to be consistent, the fractional growth during "quiescent" phase should be negligible
         if frac > 0.1:
             warnings.warn("Significant galaxy growth during 'quiescent' phase! Inconsistency?")
 
-        # Assume peak of SFR follows from star-formation main-sequence
-        # integrate backwards from there
+        # Assume peak of SFR follows from star-formation main-sequence integrate backwards from there
         peak_idx = np.where(~idx)[0][-1]
         ii = peak_idx
         while ii >= 0:
             mstar = mass_stars[ii+1]
-            # Get the SFR by assuming galaxy lies on the SFR main-sequence
-            sfr = baryons.sfr_main_seq(mstar, self.redz[ii+1], self.cosmo)
-            dt = self.times[ii+1] - self.times[ii]
+            # Get the SFR by assuming galaxy lies on the SFR main-sequence (function uses cgs units)
+            sfr = (baryons.sfr_main_seq(mstar.cgs.value, self.redz[ii+1], self.cosmo)*(u.g/u.s)).to(u.Msun/u.yr)
+            dt = (self.times[ii+1] - self.times[ii]).to(u.yr)
             # Change in mass in this time-step
             dm = sfr * dt
 
@@ -177,38 +154,36 @@ class GalaxyHistory:
                 self.formation_idx = ii
                 self.formation_time = self.times[ii]
 
+                # FIXME IT MIGHT BE GOOD TO PICK THINGS UP HERE AND CHANGE THE WAY WE START THINGS...
                 # now, we make all arrays begin from the step after formation (i.e. the first step that has mass)
-                self.time_beg = self.times[ii+1]
+                """self.time_beg = self.times[ii+1]
                 self.time_dur = self.times[-1] - self.time_beg
                 mass_stars = mass_stars[(ii+1):]
                 gal_sfr = gal_sfr[(ii+1):]
                 self.times = self.times[(ii+1):]
                 self.redz = self.redz[(ii+1):]
-                break
+                break"""
 
             gal_sfr[ii] = sfr
             mass_stars[ii] = mstar - dm
             ii -= 1
+        self.mass_stars = mass_stars
+        self.gal_sfr = gal_sfr
 
         # Initialize gas and DM arrays
-        mass_gas = np.zeros_like(self.times)
-        mass_dm = np.zeros_like(self.times)
+        mass_gas = np.zeros_like(self.mass_stars)
+        mass_dm = np.zeros_like(self.mass_stars)
 
         # Use scaling relations to get DM and gas masses from stellar (note that we start from step 1 since the initial mass is 0)
-        mass_dm[:] = halos.stellar_mass_to_halo_mass(mass_stars[:])
-        mass_gas[:] = baryons.gas_mass_from_stellar_mass(mass_stars[:])
+        mass_dm[:] = (halos.stellar_mass_to_halo_mass(mass_stars[:].cgs.value, relation=self.smhm_relation, sigma=self.smhm_sigma)*u.g).to(u.Msun)
+        mass_gas[:] = (baryons.gas_mass_from_stellar_mass(mass_stars[:].cgs.value)*u.g).to(u.Msun)
 
-        # Store arrays
-        self.mass_stars = mass_stars
         self.mass_gas = mass_gas
         self.mass_dm = mass_dm
-        self.gal_sfr = gal_sfr
-        if self.VERBOSE:
-            print("")
-            finals = np.array([mass_stars[-1], mass_gas[-1], mass_dm[-1]])/MSOL
-            print("Final total masses: stars={:.1e}, gas={:.1e}, DM={:.1e} [Msol]".format(
-                *finals))
-            print("Final SFR={:.1e} [Msol/yr]".format(gal_sfr[-1]*YR/MSOL))
+
+        if VERBOSE:
+            print("\nFinal total masses: stars={:.1e}, gas={:.1e}, DM={:.1e}".format(mass_stars[-1],mass_gas[-1],mass_dm[-1]))
+            print("Final SFR={:.1e}".format(gal_sfr[-1]))
 
         return
 
@@ -219,29 +194,24 @@ class GalaxyHistory:
         # Initialize arrays for galaxy matter profiles over time
         prof_shape = (self.times.size, self.rads.size)
 
-        # All of these quantities are in units of mass (grams), such that the total mass out to a given radius is simply the sum out to that index.
+        # All of these quantities are in units of mass (Msun), such that the total mass out to a given radius is simply the sum out to that index.
         # Note that the SFR, stars and gas are in a thin-disk while the DM is roughly spherical.
         mass_sfr_prof = np.zeros(prof_shape)
         mass_stars_prof = np.zeros(prof_shape)
         mass_gas_prof = np.zeros(prof_shape)
         mass_dm_prof = np.zeros(prof_shape)
 
-        # lists for saving interpolation models
-        mass_sfr_interp = []
-        mass_stars_interp = []
-        mass_gas_interp = []
-        mass_dm_interp = []
-
         Rscale_baryons = np.zeros(self.times.size)
         Rscale_dm = np.zeros(self.times.size)
 
-        # Get the predicted scale radius at the time of the observation
-        # FIXME: the predicted scale radius is SMALLER than the observed effective radius...we were hoping for the opposite to be true...
-        mstar_final = self.mass_stars[len(self.times)-1]
-        _, R_final = baryons.sfr_rad_dist(self.rads, mstar_final)
-        R_scaling = self.obs_rad_eff / R_final
+        # --- Compare the observed scale radius with the predicted scale radius, to account for the "width" of the star-formation main sequence
+        _, R_final = baryons.sfr_rad_dist(self.rads.cgs.value, self.obs_props['mass_stars'].cgs.value)
+        R_final = (R_final*u.cm).to(u.kpc)
+        R_scaling = (self.obs_props['rad_eff'] / R_final).value
 
-        # Iterate over each time-step until when the sgrb occurred
+        dt = 0 * u.yr
+
+        # --- Iterate over each time-step until when the sgrb occurred
         for ii, zz in enumerate(self.redz):
 
             sfr = self.gal_sfr[ii]
@@ -249,71 +219,45 @@ class GalaxyHistory:
             mgas = self.mass_gas[ii]
             mdm = self.mass_dm[ii]
 
+            # --- Add the new mass of stars from the ongoing SF (skip the first timestep since it has no prior SF)
+            if ii>0:
+                mass_stars_prof[ii, :] = mass_sfr_prof[ii-1, :] + mass_stars_prof[ii-1]
+                dt = (self.times[ii] - self.times[ii-1]).to(u.yr)
 
-            # Calculate exponential disk-profile (normalized to 1), used for both gas and SFR radial distributions since the gas follows the SFR
-            if ii == 0:
-                # for the first step, the mass only comes from the initial bout of SF...assume the scale radius is the same as the next step
-                dt = self.times[ii] - self.formation_time
-                disk_prof, Rscale_baryons[ii] = baryons.sfr_rad_dist(self.rads,  self.mass_stars[1], scaling=R_scaling)
-                mass_stars_prof[ii, :] = self.formation_sfr * dt * disk_prof
 
+            # --- Calculate exponential disk-profile (normalized to 1), used for both gas and SFR radial distributions since the gas follows the SFR
+            disk_prof, Rscale_baryons[ii] = baryons.sfr_rad_dist(self.rads.cgs.value,  mstar.cgs.value, scaling=R_scaling)
+            Rscale_baryons[ii] *= u.cm.to(u.kpc)
+
+            # --- Calculate the SFR profile at this timestep, which is used for the next timestep
+            if (sfr>0) and (mstar==0):
+                # the first timestep with SF needs special treatment since the calculated disk_prof will be null, we estimate its profile using the profile at the next timestep
+                mstar_ini = self.mass_stars[ii+1]
+                disk_prof_ini, _ = baryons.sfr_rad_dist(self.rads.cgs.value,  mstar_ini.cgs.value, scaling=R_scaling)
+                mass_sfr_prof[ii, :] = sfr * dt * disk_prof_ini
             else:
-                dt = self.times[ii] - self.times[ii-1]
-                disk_prof, Rscale_baryons[ii] = baryons.sfr_rad_dist(self.rads,  mstar, scaling=R_scaling)
-                # Add mass of stars and SF from previous time-steps to get the mass of stars at this timestep
-                mass_stars_prof[ii, :] = mass_sfr_prof[ii-1, :] + mass_stars_prof[ii-1, :]
-
-
-            # Calculate the SFR profile to be used for the next timestep
-            mass_sfr_prof[ii, :] = sfr * dt * disk_prof
-
-            # Distribute gas in disk
+                mass_sfr_prof[ii, :] = sfr * dt * disk_prof
+                
+            # --- Distribute gas in disk
             mass_gas_prof[ii, :] = mgas * disk_prof
 
-            # Distribute DM in NFW profile
+            # --- Distribute DM in NFW profile
             if self.dm_profile not in ['NFW']:
                 raise NameError('DM profile {0:s} not recognized!'.format(self.dm_profile))
-            mass_dm_prof[ii, :], Rscale_dm[ii] = halos.nfw_mass_prof(self.rads, mdm, zz, self.cosmo)
 
-            # Create interpolations for each profile, with R=0 inserted
-            mass_sfr_interp.append(interp1d(np.insert(self.rads, 0, 0), np.insert(mass_sfr_prof[ii], 0, mass_sfr_prof[ii][0])))
-            mass_stars_interp.append(interp1d(np.insert(self.rads, 0, 0), np.insert(mass_stars_prof[ii], 0, mass_stars_prof[ii][0])))
-            mass_gas_interp.append(interp1d(np.insert(self.rads, 0, 0), np.insert(mass_gas_prof[ii], 0, mass_gas_prof[ii][0])))
-            mass_dm_interp.append(interp1d(np.insert(self.rads, 0, 0), np.insert(mass_dm_prof[ii], 0, mass_dm_prof[ii][0])))
+            mass_dm_prof[ii, :], Rscale_dm[ii] = halos.nfw_mass_prof(self.rads.cgs.value, mdm.cgs.value, zz, self.cosmo)
+            mass_dm_prof[ii, :] *= u.g.to(u.Msun)
+            Rscale_dm[ii] *= u.cm.to(u.kpc)
 
 
-        self.mass_sfr_prof = mass_sfr_prof
-        self.mass_stars_prof = mass_stars_prof
-        self.mass_gas_prof = mass_gas_prof
-        self.mass_dm_prof = mass_dm_prof
+        # --- store the profiles
+        self.mass_sfr_prof = mass_sfr_prof * u.Msun
+        self.mass_stars_prof = mass_stars_prof * u.Msun
+        self.mass_gas_prof = mass_gas_prof * u.Msun
+        self.mass_dm_prof = mass_dm_prof * u.Msun
 
-        self.mass_sfr_interp = mass_sfr_interp
-        self.mass_stars_interp = mass_stars_interp
-        self.mass_gas_interp = mass_gas_interp
-        self.mass_dm_interp = mass_dm_interp
-
-        self.Rscale_baryons = Rscale_baryons
-        self.Rscale_dm = Rscale_dm
-        
-        
-        if self.VERBOSE:
-            print("")
-            names_rads = ['pc', 'kpc', 'Mpc']
-            print_rads = np.array([1.0, 1e3, 1e6])*PC
-            print("{:8s}  ".format("[Msol]"), end='')
-            for nr in names_rads:
-                print("  {:10s}".format(nr), end='')
-            print("")
-            vals = [mass_stars_prof[-1, :], mass_gas_prof[-1, :], mass_dm_prof[-1, :]]
-            nams = ['stars', 'gas', 'dm']
-            for vv, nv in zip(vals, nams):
-                print("{:8s}: ".format(nv), end='')
-                interp = utils.log_interp_1d(self.rads, np.cumsum(vv))
-                for rr, nr in zip(print_rads, names_rads):
-                    yy = interp(rr)/MSOL
-                    print("  {:10s}".format("{:.1e}".format(yy)), end='')
-
-                print("\n")
+        self.Rscale_baryons = Rscale_baryons * u.kpc
+        self.Rscale_dm = Rscale_dm * u.kpc
         
         return
 
@@ -430,7 +374,7 @@ class GalaxyHistory:
 
 
 
-    def calc_interpolated_potentials(self, interp_dirpath=None, ro=_ro, vo=_vo, multiproc=None):
+    def calc_interpolated_potentials(self, interp_dirpath=None, ro=8, vo=220, multiproc=None):
         """Creates interpolants for combined potentials. 
         First, checks to see if interpolations already exist in directory `interp_dirpath`.
         If the interpolations do not exist in this path, they are generated and saved to this path. 
@@ -498,7 +442,7 @@ class GalaxyHistory:
                 start = time.time()
                 ip = func(data)
                 end = time.time()
-                if self.VERBOSE == True:
+                if VERBOSE == True:
                     print('   interpolated potential for step {0:d} (z={1:0.2f}) created in {2:0.2f}s...'.format(ii,self.redz[ii],end-start))
 
                 interpolated_potentials.append(ip)
@@ -527,7 +471,7 @@ class GalaxyHistory:
                 
                 
 # define interpolating function
-def interp(combined_potential, rgrid, zgrid, ro=_ro, vo=_vo):
+def interp(combined_potential, rgrid, zgrid, ro=8, vo=220):
     ip = interpRZPotential(combined_potential, rgrid=rgrid, zgrid=zgrid, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
     return ip
 

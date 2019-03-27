@@ -55,6 +55,8 @@ def parse_commandline():
     parser.add_argument('--dm-profile', type=str, default='NFW', help="Profile for the DM, named according to Galpy potentials. Default is NFW.")
     parser.add_argument('--z-scale', type=float, default=0.05, help="Fraction of the galactic scale radius for the scale height above/below the disk. Default=0.05.")
     parser.add_argument('--differential-prof', action='store_true', help="Uses a differential stellar profile, creating a unique galpy potential at each timestep according to the updated scale radius and accumulated mass. Default=False.")
+    parser.add_argument('--smhm-relation', type=str, default='Guo', help="Chooses a stellar mass-halo mass relation. Current options are from Guo+2010 and Moster+2012. If Moster is provided, can also supply a sigma value. Default is 'Guo'.")
+    parser.add_argument('--smhm-sigma', type=float, default=0.0, help="Deviation from the stellar mass-halo mass relation in Moster+2012. Can supply either positive or negative values. Default is 0.0.")
     parser.add_argument('--fixed-potential', action='store_true', help="Fixes the galactic potential to the potential of the galaxy at the time of the sGRB. Also samples the location of the system according to this galactic model. Default=False.")
 
     # sampling arguments
@@ -111,35 +113,40 @@ def main(args):
     if not os.path.exists(args.output_dirpath):
         os.makedirs(args.output_dirpath)
 
-    # --- read sgrb hostprops table as pandas dataframe
+    # --- read sgrb hostprops table as pandas dataframe, parse observed props
     sgrb_host_properties = pd.read_table(args.sgrb_path, delim_whitespace=True, na_values='-')
-    grb_props = sgrb_host_properties.loc[sgrb_host_properties['GRB'] == args.grb]
-
+    gal_info = sgrb_host_properties.loc[sgrb_host_properties['GRB'] == args.grb].iloc[0]
+    obs_props = {'name':gal_info['GRB'],\
+                      'pcc':gal_info['Pcc'],\
+                      'mass_stars':10**gal_info['log(M*)']*u.Msun,\
+                      'redz':gal_info['z'],\
+                      'age_stars':gal_info['PopAge']*u.Gyr,\
+                      'rad_eff':gal_info['r_e']*u.kpc,\
+                      'rad_offset':gal_info['deltaR']*u.kpc,\
+                      'rad_offset_error':gal_info['deltaR_err']*u.kpc,\
+                      'gal_sfr':gal_info['SFR']*u.Msun/u.yr
+                      }
 
 
     # --- construct galaxy class
     gal = galaxy_history.GalaxyHistory(\
-                        obs_mass_stars = float(10**grb_props['log(M*)'] * u.Msun.to(u.g)),\
-                        obs_redz = float(grb_props['z']),\
-                        obs_age_stars = float(grb_props['PopAge'] * u.Gyr.to(u.s)),\
-                        obs_rad_eff = float(grb_props['r_e'] * u.kpc.to(u.cm)),\
-                        obs_rad_offset = float(grb_props['deltaR'] * u.kpc.to(u.cm)),\
-                        obs_rad_offset_error = float(grb_props['deltaR_err'] * u.kpc.to(u.cm)),\
-                        obs_gal_sfr = float(grb_props['SFR'] * (u.Msun.to(u.g))/u.yr.to(u.s)),\
+                        obs_props = obs_props,\
                         disk_profile = args.disk_profile,\
-                        bulge_profile = args.bulge_profile,\
                         dm_profile = args.dm_profile,\
-                        interp = args.interp,\
+                        smhm_relation = args.smhm_relation,\
+                        smhm_sigma = args.smhm_sigma,\
+                        bulge_profile = args.bulge_profile,\
                         z_scale = args.z_scale,\
                         differential_prof = args.differential_prof,\
+                        interp = args.interp,\
                         #Tsteps = args.Tsteps,\
                         #Rgrid = args.Rgrid,\
                         #Zgrid = args.Zgrid,\
                         #Rgrid_max = args.Rgrid_max,\
                         #Zgrid_max = args.Zgrid_max,\
-                        name = grb_props['GRB'].item(),\
-                        multiproc = args.multiproc,\
-                        verbose = args.verbose)
+                        #multiproc = args.multiproc,\
+                        #verbose = args.verbose)
+                        )
 
     # make sure the timestep isn't larger than the number of redshift bins (note that the last redshift value has no bin)
     if args.t0 >= (len(gal.redz)-1):
@@ -147,6 +154,10 @@ def main(args):
 
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[args.t0]))
 
+
+
+
+    # --- Read in interpolants here, if specified
 
 
 
