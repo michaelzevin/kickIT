@@ -36,15 +36,9 @@ def parse_commandline():
     parser.add_argument('-N', '--Nsys', type=int, default=1, help="Number of systems you wish to run for this particular starting time. Default is 1.")
     parser.add_argument('-mp', '--multiproc', type=str, default=None, help="If specified, will parallelize over the number of cores provided as an argument. Can also use the string 'max' to parallelize over all available cores. Default is None.")
 
-    # defining grid properties
-    parser.add_argument('-T', '--Tsteps', type=int, default=100, help="Number of discrete time (redshift) bins to evolve systems in. Default is 100.")
-    parser.add_argument('-rg', '--Rgrid', type=int, default=500, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
-    parser.add_argument('-zg', '--Zgrid', type=int, default=300, help="Number of gridpoints for the Z-component of the interpolation model. Default is 50.") 
-    parser.add_argument('--Rgrid-max', type=float, default=1e3, help="Maximum R value for interpolated potentials. Default is 1e3.")
-    parser.add_argument('--Zgrid-max', type=float, default=1e2, help="Maximum Z value for interpolated potentials. Default is 1e2.")
 
     # paths to data files
-    parser.add_argument('--interp', type=str, default=None, help="Path to the potential interpolation file you wish to use. Default is None.")
+    parser.add_argument('--interp-path', type=str, default=None, help="Path to the potential interpolation file you wish to use. Default is None.")
     parser.add_argument('--output-dirpath', type=str, default='./output_files/', help="Path to the output hdf file. File has key names tracers. Default is './output_files/'.")
     parser.add_argument('--sgrb-path', type=str, default='./data/sgrb_hostprops_offsets.txt', help="Path to the table with sGRB host galaxy information. Default is './data/sgrb_hostprops_offsets.txt'.")
     parser.add_argument('--samples-path', type=str, default='./data/example_bns.dat', help="Path to the samples from population synthesis for generating the initial population of binaries. Default is './data/example_bns.dat'.")
@@ -108,8 +102,6 @@ def main(args):
     start = time.time()
 
     # --- construct pertinent directories
-    #if not os.path.exists(args.interp_dirpath):
-    #    os.makedirs(args.interp_dirpath)
     if not os.path.exists(args.output_dirpath):
         os.makedirs(args.output_dirpath)
 
@@ -138,7 +130,6 @@ def main(args):
                         bulge_profile = args.bulge_profile,\
                         z_scale = args.z_scale,\
                         differential_prof = args.differential_prof,\
-                        interp = args.interp,\
                         #Tsteps = args.Tsteps,\
                         #Rgrid = args.Rgrid,\
                         #Zgrid = args.Zgrid,\
@@ -155,9 +146,22 @@ def main(args):
     print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[args.t0]))
 
 
-
+    import pickle
+    pickle.dump(gal, open('gal.tmp', 'wb'))
+    return
+    
 
     # --- Read in interpolants here, if specified
+    if args.interp_path:
+        interpolants = pickle.load(open(args.interp_path, 'rb'))
+    else:
+        if differential_prof==True:
+            warnings.warn("If you're using differential stellar profiles, you might want to be using an interpolated potential instance to speed up the integrations!!!")
+
+    # Check that the interpolants have the same number of timesteps
+    if len(interpolants) != len(gal.times):
+        raise ValueError('The interpolation file you specified does not have the same parameters as your galaxy model! It has {0:d} timesteps whereas you galaxy has {1:d}!'.format(len(interpolants), len(gal.times)))
+
 
 
 

@@ -9,7 +9,6 @@ import os
 import pickle
 import time
 import pandas as pd
-from scipy.interpolate import interp1d
 import multiprocessing
 from functools import partial
 
@@ -47,7 +46,7 @@ class GalaxyHistory:
     """
 
 
-    def __init__(self, obs_props, disk_profile, dm_profile, smhm_relation='Guo', smhm_sigma=0.0, bulge_profile=None, z_scale=None, differential_prof=False, interp=None):
+    def __init__(self, obs_props, disk_profile, dm_profile, smhm_relation='Guo', smhm_sigma=0.0, bulge_profile=None, z_scale=None, differential_prof=False):
         """Units are kept as astropy quantities for clarity!
         """
 
@@ -89,21 +88,9 @@ class GalaxyHistory:
         # Calculate the SFR weights at each timestep
         self.sfr_weights = (self.gal_sfr / np.sum(self.gal_sfr)).value
 
-        import pdb; pdb.set_trace()
         # Calculate galactic potentials vs time
         self.calc_potentials_vs_time(self.differential_prof)
         self.calc_potentials_vs_time(self.differential_prof, method='natural')
-
-        # Interpoate the potentials (need to be in natural units)
-        # FIXME: just read in the interpolated pickle files and overwrite the galactic potentials
-        if interp:
-            self.interp = True
-            self.calc_interpolated_potentials(interp, multiproc=multiproc)
-        else:
-            self.interp = False
-            if differential_prof==True:
-                raise ValueError("If you're using differential stellar profiles, you better be using an interpolated potential instance!!!")
-                 
 
         return
 
@@ -153,16 +140,6 @@ class GalaxyHistory:
                 self.formation_sfr = sfr
                 self.formation_idx = ii
                 self.formation_time = self.times[ii]
-
-                # FIXME IT MIGHT BE GOOD TO PICK THINGS UP HERE AND CHANGE THE WAY WE START THINGS...
-                # now, we make all arrays begin from the step after formation (i.e. the first step that has mass)
-                """self.time_beg = self.times[ii+1]
-                self.time_dur = self.times[-1] - self.time_beg
-                mass_stars = mass_stars[(ii+1):]
-                gal_sfr = gal_sfr[(ii+1):]
-                self.times = self.times[(ii+1):]
-                self.redz = self.redz[(ii+1):]
-                break"""
 
             gal_sfr[ii] = sfr
             mass_stars[ii] = mstar - dm
@@ -272,13 +249,13 @@ class GalaxyHistory:
         """
 
         if method == 'astropy':
-            print("Calculating galactic potentials at each redshift...\n")
+            print("Calculating galactic potentials at each redshift using astropy units...\n")
         elif method == 'natural':
             print("Calculating galactic potentials at each redshift using galpy's natural units...\n")
         else:
             raise NameError('Method {0:s} for constructing the potential not recognized!'.format(method))
 
-        # lists for saving combined potentials at each step
+        # lists for saving potentials at each step
         stars_potentials = []
         gas_potentials = []
         dm_potentials = []
@@ -293,35 +270,46 @@ class GalaxyHistory:
 
             # --- get the gas and DM masses at this step
             if method=='astropy':
-                mgas = (self.mass_gas[ii]) * u.g
-                mdm = (self.mass_dm[ii]) * u.g
+                mgas = self.mass_gas[ii]
+                mdm = self.mass_dm[ii]
             elif method=='natural':
-                mgas = utils.Mcgs_to_nat(self.mass_gas[ii])
-                mdm = utils.Mcgs_to_nat(self.mass_dm[ii])
+                mgas = utils.Mphys_to_nat(self.mass_gas[ii])
+                mdm = utils.Mphys_to_nat(self.mass_dm[ii])
             
 
-            # --- if differential==False, just take the total stellar mass at each timestep
+            # --- if differential stellar potential not being used, just take the total stellar mass at each timestep
             # --- this is also done for the first differential timestep
             if (differential==False) or (ii == 0):
                 if method=='astropy':
-                    mstar = (self.mass_stars[ii]) * u.g
+                    mstar = self.mass_stars[ii]
                 elif method=='natural':
-                    mstar = utils.Mcgs_to_nat(self.mass_stars[ii])
+                    mstar = utils.Mphys_to_nat(self.mass_stars[ii])
             else:
                 if method=='astropy':
-                    mstar = (self.mass_stars[ii] - self.mass_stars[ii-1]) * u.g
+                    mstar = self.mass_stars[ii] - self.mass_stars[ii-1]
                 elif method=='natural':
-                    mstar = utils.Mcgs_to_nat(self.mass_stars[ii] - self.mass_stars[ii-1])
+                    mstar = utils.Mphys_to_nat(self.mass_stars[ii] - self.mass_stars[ii-1])
 
-
-            # get the scale lengths for the baryons and halo at this redshift step
+            # --- get the scale lengths for the baryons and halo at this redshift step
             if method=='astropy':
-                rs_baryons = self.Rscale_baryons[ii] * u.cm
-                rs_dm = self.Rscale_dm[ii] * u.cm
+                rs_baryons = self.Rscale_baryons[ii]
+                rs_dm = self.Rscale_dm[ii]
+                # if galaxy hasn't formed yet, give the potentials neglible scale sizes to avoid dividing by 0
+                if rs_baryons==0:
+                    rs_baryons = 1e-10 * rs_baryons.unit
+                if rs_dm==0:
+                    rs_dm = 1e-10 * rs_dm.unit
             elif method=='natural':
-                rs_baryons = utils.Rcgs_to_nat(self.Rscale_baryons[ii])
-                rs_dm = utils.Rcgs_to_nat(self.Rscale_dm[ii])
+                rs_baryons = utils.Rphys_to_nat(self.Rscale_baryons[ii])
+                rs_dm = utils.Rphys_to_nat(self.Rscale_dm[ii])
+                # if galaxy hasn't formed yet, give the potentials neglible scale sizes to avoid dividing by 0
+                if rs_baryons==0:
+                    rs_baryons = 1e-10
+                if rs_dm==0:
+                    rs_dm = 1e-10
 
+
+            # --- construct the stellar and gas potentials
 
             if self.disk_profile=='RazorThinExponential':
                 # for a razor-thin disk, the amplitude is mdisk / (2 * pi * rs**2)
@@ -332,28 +320,31 @@ class GalaxyHistory:
                 gas_potential = RazorThinExponentialDiskPotential(amp=amp_gas, hr=rs_baryons)
 
             elif self.disk_profile=='DoubleExponential':
-                # for a double exponential disk, the amplitude is mdisk / (2 * pi * rs**2 * rz)
-                # NOTE: (2 * pi * rs**2 * 2 * zs) matches the code...
+                # for a double exponential disk, the amplitude is mdisk / (2 * pi * rs**2 * 2*rz)
                 amp_stars = mstar / (4 * np.pi * rs_baryons**2 * (self.z_scale*rs_baryons))
                 amp_gas = mgas / (4 * np.pi * rs_baryons**2 * (self.z_scale*rs_baryons))
                 stars_potential = DoubleExponentialDiskPotential(amp=amp_stars, hr=rs_baryons, hz=self.z_scale*rs_baryons)
                 gas_potential = DoubleExponentialDiskPotential(amp=amp_gas, hr=rs_baryons, hz=self.z_scale*rs_baryons)
 
 
-            # assume a nfw profile, amplitude is just the total dm mass
+
+            # --- construct the DM potentials
+
             amp_dm = mdm
             dm_potential = NFWPotential(amp=amp_dm, a=rs_dm)
 
 
-            # add the potentials to the lists for each step
+            # --- add the potentials to the lists for each step
             stars_potentials.append(stars_potential)
             gas_potentials.append(gas_potential)
             dm_potentials.append(dm_potential)
+
             # --- if differential is specified, we use *all* the stellar profiles up to this point
             if differential==True:
-                combined_potentials = stars_potentials.extend(gas_potential, dm_potential)
+                combined_potentials = stars_potentials[:]
+                combined_potentials.extend([gas_potential, dm_potential])
             else:
-                combined_potentials = [stars_potential,gas_potential,dm_potentials]
+                combined_potentials = [stars_potential,gas_potential,dm_potential]
             full_potentials.append(combined_potentials)
 
 
@@ -370,109 +361,5 @@ class GalaxyHistory:
 
 
         return
-
-
-
-
-    def calc_interpolated_potentials(self, interp_dirpath=None, ro=8, vo=220, multiproc=None):
-        """Creates interpolants for combined potentials. 
-        First, checks to see if interpolations already exist in directory `interp_dirpath`.
-        If the interpolations do not exist in this path, they are generated and saved to this path. 
-        To implement multiprocessing, specify an int for the argument 'multiproc'
-        """
-        
-        print('Creating interpolation models of galactic potentials at each redshift...\n')
-
-        if interp_dirpath:
-            # if interpolation path is provided, see if the interpolated potentials exist
-            pickle_path = interp_dirpath + '/' + self.name + '_' + str(self.NUM_TIME_STEPS) + 'T_' + str(self.NUM_RADS) + 'R_' + str(self.NUM_HEIGHTS) + 'Z_' + str(self.RGRID_MAX) + 'Rmax_' + str(self.ZGRID_MAX) + 'Zmax.pkl'
-            if os.path.isfile(pickle_path):
-
-                # read in the pickled file
-                print('Pickled file with galactic interpolations found at: \n  {0:s}\n    reading in this data...\n'.format(interp_dirpath))
-                interpolated_potentials = pickle.load(open(pickle_path, 'rb'))
-                self.interpolated_potentials = interpolated_potentials
-                return
-
-            else:
-                print('Pickled file with galactic interpolations not found at \n  {0:s}\n    constructing the interpolants...\n'.format(interp_dirpath))
-                
-
-        # convert Rs and Zs to natural units, calculate the grid
-        ro_cgs = ro * u.kpc.to(u.cm)
-        vo_cgs = vo * u.km.to(u.cm)
-        rads = self.RADS_RANGE / ro_cgs
-        heights = self.HEIGHTS_RANGE / ro_cgs
-        
-        rs = (*rads, self.NUM_RADS)
-        logrs = (*np.log10(rads), self.NUM_RADS)
-        zs = (*heights, self.NUM_HEIGHTS)
-                
-
-        # combine all the potentials
-        combined_potentials=[]
-        for idx, pot in enumerate(self.full_potentials_natural):
-            combined_potentials.append(self.full_potentials_natural[:(idx+1)])
-
-
-        # enable multiprocessing, if specified
-        if multiproc:
-            if multiproc=='max':
-                mp = multiprocessing.cpu_count()
-            else:
-                mp = int(multiproc)
-
-            pool = multiprocessing.Pool(mp)
-            func = partial(interp, rgrid=logrs, zgrid=zs)
-
-            start = time.time()
-            print('Parallelizing interpolations over {0:d} cores...\n'.format(mp))
-            interpolated_potentials = pool.map(func, combined_potentials)
-            stop = time.time()
-            print('   finished! It took {0:0.2f}s\n'.format(stop-start))
-            
-
-        # otherwise, do this in serial
-        else:
-            print('Interpolating potentials in serial...\n')
-            interpolated_potentials=[]
-            func = partial(interp, rgrid=logrs, zgrid=zs)
-            for ii, data in enumerate(combined_potentials):
-
-                start = time.time()
-                ip = func(data)
-                end = time.time()
-                if VERBOSE == True:
-                    print('   interpolated potential for step {0:d} (z={1:0.2f}) created in {2:0.2f}s...'.format(ii,self.redz[ii],end-start))
-
-                interpolated_potentials.append(ip)
-
-
-
-        self.interpolated_potentials = interpolated_potentials
-
-        # if interp_dirpath was provided, dump the interpolations 
-        if interp_dirpath:
-            print('\nSaving the inteprolated potentials as pickles to the provided path...\n')
-            pickle.dump(interpolated_potentials, open(pickle_path,'wb'))
-
-        return
-
-
-
-
-    def write(self, outdir):
-        """Writes the galaxy data to a pickled file.
-        """
-
-        print("Writing galaxy data in directory '{0:s}'...\n".format(outdir))
-        pickle.dump(self, open(outdir+'/galaxy.pkl', 'wb'))
-        return
-                
-                
-# define interpolating function
-def interp(combined_potential, rgrid, zgrid, ro=8, vo=220):
-    ip = interpRZPotential(combined_potential, rgrid=rgrid, zgrid=zgrid, logR=True, interpRforce=True, interpzforce=True, zsym=True, ro=ro, vo=vo)
-    return ip
 
 

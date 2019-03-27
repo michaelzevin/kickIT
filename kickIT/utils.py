@@ -161,73 +161,68 @@ def cylindrical_to_cartesian(R,Phi,Z,vR,vPhi,vZ):
     
 
 
-def Mcgs_to_nat(M, ro=8, vo=220):
-    """Converts cgs masses to galpy natural units
+def Mphys_to_nat(M, ro=8*u.kpc, vo=220*u.km/u.s):
+    """Converts physical masses to galpy natural units
     """
-    ro *= u.kpc.to(u.cm)
-    vo *= u.km.to(u.cm)
-    G = C.G.cgs.value
+    M = M.to(u.kg)
+    ro = ro.to(u.m)
+    vo = vo.to(u.m/u.s)
+    G = C.G.si
 
     Mo = vo**2 * ro / G
 
-    return M/Mo
+    return (M/Mo).value
 
 
-def Mnat_to_cgs(M, ro=8, vo=220):
-    """Converts galpy natural units to cgs masses
+def Mnat_to_phys(M, ro=8*u.kpc, vo=220*u.km/u.s):
+    """Converts galpy natural units to physical masses
     """
-    ro *= u.kpc.to(u.cm)
-    vo *= u.km.to(u.cm)
-    G = C.G.cgs.value
+    ro = ro.to(u.m)
+    vo = vo.to(u.m/u.s)
+    G = C.G.si
 
     Mo = vo**2 * ro / G
 
-    return M*Mo
+    return (M*Mo).to(Msun)
 
 
-def Rcgs_to_nat(r, ro=8, vo=220):
-    """Converts cgs distance to galpy natural units
+def Rphys_to_nat(r, ro=8*u.kpc, vo=220*u.km/u.s):
+    """Converts physical distance to galpy natural units
     """
-    ro *= u.kpc.to(u.cm)
 
-    return r/ro
+    return (r/ro).value
 
 
-def Rnat_to_cgs(r, ro=8, vo=220):
-    """Converts galpy natural units to cgs distance
+def Rnat_to_phys(r, ro=8*u.kpc, vo=220*u.km/u.s):
+    """Converts galpy natural units to physical distance
     """
-    ro *= u.kpc.to(u.cm)
 
-    return r*ro
+    return (r*ro).to(kpc)
 
 
-def Tcgs_to_nat(t, ro=8, vo=220):
-    """Converts cgs time to galpy natural units
+def Tphys_to_nat(t, ro=8*u.kpc, vo=220*u.km/u.s):
+    """Converts physical time to galpy natural units
     """
-    ro *= u.kpc.to(u.cm)
-    vo *= u.km.to(u.cm)
+    ro = ro.to(km)
 
     to = ro/vo
 
-    return t/to
+    return (t/to).value
 
 
-def Tnat_to_cgs(t, ro=8, vo=220):
-    """Converts galpy natural units to cgs time
+def Tnat_to_phys(t, ro=8*u.kpc, vo=220*u.km/u.s):
+    """Converts galpy natural units to physical time
     """
-    ro *= u.kpc.to(u.cm)
-    vo *= u.km.to(u.cm)
+    ro = ro.to(km)
 
     to = ro/vo
 
-    return t*to
+    return (t*to).to(Gyr)
 
 
-def orbit_cgs_to_nat(R, vR, vT, Z, vZ, Phi, ro=8, vo=220):
-    """Converts orbital parameters from cgs to natural units
+def orbit_phys_to_nat(R, vR, vT, Z, vZ, Phi, ro=8*u.kpc, vo=220*u.km/u.s):
+    """Converts orbital parameters from physical to natural units
     """
-    ro *= u.kpc.to(u.cm)
-    vo *= u.km.to(u.cm)
 
     R /= ro
     vR /= vo
@@ -235,14 +230,12 @@ def orbit_cgs_to_nat(R, vR, vT, Z, vZ, Phi, ro=8, vo=220):
     Z /= ro
     vZ /= vo
     
-    return R, vR, vT, Z, vZ, Phi
+    return R.value, vR.value, vT.value, Z.value, vZ.value, Phi.value
 
 
-def orbit_nat_to_cgs(R, vR, vT, Z, vZ, Phi, ro=8, vo=220):
-    """Converts orbital parameters from natural units to cgs
+def orbit_nat_to_phys(R, vR, vT, Z, vZ, Phi, ro=8*u.kpc, vo=220*u.km/u.s):
+    """Converts orbital parameters from natural units to physical
     """
-    ro *= u.kpc.to(u.cm)
-    vo *= u.km.to(u.cm)
 
     R *= ro
     vR *= vo
