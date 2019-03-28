@@ -14,12 +14,15 @@ from scipy.integrate import ode
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
 
-from galpy.potential import vcirc as gp_vcirc
-from galpy.orbit import Orbit as gp_orbit
+from galpy.potential import vcirc
+from galpy.orbit import Orbit
 from galpy.potential import evaluatePotentials
 
 from kickIT.galaxy_history import cosmology
 from . import utils
+
+
+VERBOSE=True
 
 class Systems:
     """
@@ -32,44 +35,103 @@ class Systems:
     System starts on a circular orbit in the r-phi (x-y) plane, on the x-axis (phi=0) and moving in the positive y direction. 
     Galaxy projection taken account when determining radial offset at merger. 
     """
-    def __init__(self, t0, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None, sample_progenitor_props=False, verbose=False):
+    def __init__(self, sampled_parameters, SNphi=None, SNtheta=None, SYSphi=None, SYStheta=None, sample_progenitor_props=False):
 
-        self.VERBOSE = verbose
+        self.R = np.asarray(sampled_parameters['R'])*u.kpc
+        self.t0 = np.asarray(sampled_parameters['t0'])
+        self.tbirth = np.asarray(sampled_parameters['tbirth'])*u.Gyr
+        self.zbirth = np.asarray(sampled_parameters['zbirth'])*u.dimensionless_unscaled
+        self.Nsys = len(self.R)
 
-        # read in the sampled progenitor parameters
+        # --- read in the sampled progenitor parameters specific to both sampling methods
         if sample_progenitor_props:
-            self.Mns = np.asarray(sampled_parameters['Mns'])
-            self.Mcomp = np.asarray(sampled_parameters['Mcomp'])
-            self.Mhe = np.asarray(sampled_parameters['Mhe'])
-            self.Apre = np.asarray(sampled_parameters['Apre'])
-            self.epre = np.asarray(sampled_parameters['epre'])
-            self.Vkick = np.asarray(sampled_parameters['Vkick'])
-            self.R = np.asarray(sampled_parameters['R'])
-        # if progenitor properties not sampled, just save the necessary information
+            self.Mns = np.asarray(sampled_parameters['Mns'])*u.Msun
+            self.Mcomp = np.asarray(sampled_parameters['Mcomp'])*u.Msun
+            self.Mhe = np.asarray(sampled_parameters['Mhe'])*u.Msun
+            self.Apre = np.asarray(sampled_parameters['Apre'])*u.Rsun
+            self.epre = np.asarray(sampled_parameters['epre'])*u.dimensionless_unscaled
+            self.Vkick = np.asarray(sampled_parameters['Vkick'])*u.km/u.s
         else:
-            self.Vsys = np.asarray(sampled_parameters['Vsys'])
-            self.R = np.asarray(sampled_parameters['R'])
-            self.Tinsp = np.asarray(sampled_parameters['Tinsp'])
+            self.Vsys = np.asarray(sampled_parameters['Vsys'])*u.km/u.s
+            self.Tinsp = np.asarray(sampled_parameters['Tinsp'])*u.Gyr
             self.SNsurvive = np.asarray(sampled_parameters['SNsurvive'])
         
 
-        self.t0 = t0
-        self.Nsys = len(self.R)
-
-        # initialize random angles (only need SN angles if implementing the SN)
+        #  --- initialize random angles (only need SN angles if implementing the SN)
         if sample_progenitor_props:
-            if SNphi: self.SNphi = SNphi
-            else: self.SNphi = 2*np.pi*np.random.random(self.Nsys)
+            if SNphi: self.SNphi = SNphi*u.rad
+            else: self.SNphi = 2*np.pi*np.random.random(self.Nsys)*u.rad
 
-            if SNtheta: self.SNtheta = SNtheta
-            else: self.SNtheta = np.arccos(2*np.random.random(self.Nsys)-1)
+            if SNtheta: self.SNtheta = SNtheta*u.rad
+            else: self.SNtheta = np.arccos(2*np.random.random(self.Nsys)-1)*u.rad
 
-        if SYSphi: self.SYSphi = SYSphi
-        else: self.SYSphi = 2*np.pi*np.random.random(self.Nsys)
+        if SYSphi: self.SYSphi = SYSphi*u.rad
+        else: self.SYSphi = 2*np.pi*np.random.random(self.Nsys)*u.rad
 
-        if SYStheta: self.SYStheta = SYStheta
-        else: self.SYStheta = np.arccos(2*np.random.random(self.Nsys)-1)
+        if SYStheta: self.SYStheta = SYStheta*u.rad
+        else: self.SYStheta = np.arccos(2*np.random.random(self.Nsys)-1)*u.rad
 
+
+    def escape_velocity(self, gal, interpolants):
+        """
+        Calculates the escape velocity for each particle at their respective radius.
+        """
+
+        print('Calculating particle escape velocities...\n')
+
+        # Read in Rvals, assuming particles start in the plane
+        R_vals = self.R
+        z_vals = np.zeros_like(R_vals)
+
+        # specify radius and height at "infinity" in kpc
+        R_inf = 1000*u.kpc
+        z_inf = 1000*u.kpc
+
+        Vescs = []
+        for idx, (t0,R,z) in enumerate(zip(self.t0, R_vals, z_vals)):
+            if interpolants:
+                potential = interpolants[t0]
+            else:
+                potential = gal.full_potentials[t0]
+
+            pot_at_inf = evaluatePotentials(potential, R_inf, z_inf).value
+            Vescs.append(np.sqrt(2*(pot_at_inf - evaluatePotentials(potential, R, z).value)))
+
+        self.Vesc = np.asarray(Vescs)*u.km/u.s
+        return
+
+
+
+    def galactic_velocity(self, gal, interpolants, fixed_potential=None):
+        """
+        Calculates the pre-SN galactic velocity for the tracer particles at their initial radius R. 
+        """
+
+        print('Calculating the pre-SN galactic velocity...\n')
+
+        # --- Using galpy's vcirc method, we can easily calculate the rotation velocity at any R
+
+        R_vals = self.R
+
+        Vcircs = []
+        for idx, (t0,R) in enumerate(zip(self.t0, R_vals)):
+            # if fixed_potential, we take the potential at the specified timestep only
+            if fixed_potential:
+                t0_pot = fixed_potential
+            else:
+                t0_pot = t0
+
+            # if interpolants are provided, use these for the calculation
+            if interpolants:
+                potential = interpolants[t0_pot]
+            else:
+                potential = gal.full_potentials[t0_pot]
+
+            Vcircs.append(vcirc(potential, R).value)
+
+        self.Vcirc = np.asarray(Vcircs)*u.km/u.s
+
+        
 
     def SN(self):
         """
@@ -97,7 +159,10 @@ class Systems:
 
         print('Implementing the supernova physics...\n')
 
-        G = C.G.cgs.value
+        # get G in Msun/km/s units
+        G = C.G.to(u.km**3 / u.Msun / u.s**2)
+        # NOTE: Need to make sure Apre is converted to km!
+        Apre = self.Apre.to(u.km)
 
         # Decompose the kick into its cartesian coordinates
         self.Vkx = self.Vkick*np.sin(self.SNtheta)*np.sin(self.SNphi)
@@ -105,13 +170,13 @@ class Systems:
         self.Vkz = self.Vkick*np.sin(self.SNtheta)*np.cos(self.SNphi)
 
         # Calculate the relative velocity according to Kepler's Law
-        self.Vr = np.sqrt(G * (self.Mhe+self.Mcomp) / self.Apre)
+        self.Vr = np.sqrt(G * (self.Mhe+self.Mcomp) / Apre)
 
         # Calculate the post-SN orbital properties (Eqs 3 and 4 from Kalogera 1996)
         Mtot_post = self.Mns+self.Mcomp
 
-        self.Apost = G*(Mtot_post) * ((2*G*Mtot_post/self.Apre) - (self.Vkick**2) - (self.Vr**2) - 2*self.Vky*self.Vr)**(-1.0)
-        x = ((self.Vkz**2 + self.Vky**2 + self.Vr**2 + 2*self.Vky*self.Vr)*self.Apre**2) / (G * Mtot_post * self.Apost)
+        Apost = G*(Mtot_post) * ((2*G*Mtot_post/Apre) - (self.Vkick**2) - (self.Vr**2) - 2*self.Vky*self.Vr)**(-1.0)
+        x = ((self.Vkz**2 + self.Vky**2 + self.Vr**2 + 2*self.Vky*self.Vr)*Apre**2) / (G * Mtot_post * Apost)
         self.epost = np.sqrt(1-x)
 
         # Calculate the post-SN systemic velocity (Eq 34 from Kalogera 1996)
@@ -122,6 +187,9 @@ class Systems:
 
         # Calculate the tile of the orbital plane from the SN (Eq 5 from Kalogera 1996)
         self.tilt = np.arccos((self.Vky+self.Vr) / np.sqrt((self.Vky+self.Vr)**2 + self.Vkz**2))
+
+        # Now, convert Apost to Rsun
+        self.Apost = Apost.to(u.Rsun)
 
 
 
@@ -140,15 +208,20 @@ class Systems:
 
         print('Checking if the systems survived the supernovae...\n')
 
-        G = C.G.cgs.value
+        # get G in Msun/km/s units
+        G = C.G.to(u.km**3 / u.Msun / u.s**2)
+        # NOTE: Need to make sure Apre and Apost is converted to km!
+        Apre = self.Apre.to(u.km)
+        Apost = self.Apost.to(u.km)
+
         Mtot_pre = self.Mhe+self.Mcomp
         Mtot_post = self.Mns+self.Mcomp
 
         # Check 1: Continuity demands that post-SN orbits must pass through the pre-SN positions (Eq 21 from Flannery & Van Heuvel 1975)
-        self.SNcheck1 = (1-self.epost <= self.Apre/self.Apost) & (self.Apre/self.Apost <= 1+self.epost)
+        self.SNcheck1 = (1-self.epost <= Apre/Apost) & (Apre/Apost <= 1+self.epost)
 
         # Check 2: Lower and upper limites on amount of orbital contraction or expansion that can take place for a given amount of mass loss and a given natal kick velocity (Kalogera & Lorimer 2000)
-        self.SNcheck2 = (self.Apre/self.Apost < 2-((Mtot_pre/Mtot_post)*((self.Vkick/self.Vr)-1)**2)) & (self.Apre/self.Apost > 2-((Mtot_pre/Mtot_post)*((self.Vkick/self.Vr)+1)**2))
+        self.SNcheck2 = (Apre/Apost < 2-((Mtot_pre/Mtot_post)*((self.Vkick/self.Vr)-1)**2)) & (Apre/Apost > 2-((Mtot_pre/Mtot_post)*((self.Vkick/self.Vr)+1)**2))
 
         # Check 3: The magnitude of the kick velocity imparted to the compact object at birth is restricted to a certain range (Brandy & Podsiadlowski 1995; Kalogera & Lorimer 2000)
         # The first inequality expresses the requirement that the bianry must remain bound after the SN explosion
@@ -163,10 +236,10 @@ class Systems:
         idxs = np.where(self.SNcheck4==True)[0]
         Mtot_post_temp = self.Mns[idxs]+self.Mcomp[idxs]
 
-        kvar = 2*(self.Apost[idxs]/self.Apre[idxs])-(((self.Vkick[idxs]**2)*self.Apost[idxs] / (G*Mtot_post_temp))+1)
-        term1 = kvar**2 * Mtot_post_temp * (self.Apre[idxs]/self.Apost[idxs])
-        term2 = 2 * (self.Apost[idxs]/self.Apre[idxs])**2 * (1-self.epost[idxs]**2) - kvar
-        term3 = -2 * (self.Apost[idxs]/self.Apre[idxs]) * np.sqrt(1-self.epost[idxs]**2) * np.sqrt((self.Apost[idxs]/self.Apre[idxs])**2 * (1-self.epost[idxs]**2) - kvar)
+        kvar = 2*(Apost[idxs]/Apre[idxs])-(((self.Vkick[idxs]**2)*Apost[idxs] / (G*Mtot_post_temp))+1)
+        term1 = kvar**2 * Mtot_post_temp * (Apre[idxs]/Apost[idxs])
+        term2 = 2 * (Apost[idxs]/Apre[idxs])**2 * (1-self.epost[idxs]**2) - kvar
+        term3 = -2 * (Apost[idxs]/Apre[idxs]) * np.sqrt(1-self.epost[idxs]**2) * np.sqrt((Apost[idxs]/Apre[idxs])**2 * (1-self.epost[idxs]**2) - kvar)
         max_val = -self.Mcomp[idxs] + term1 / (term2 + term3)
 
         self.SNcheck4[idxs] = (self.Mhe[idxs] <= max_val)
@@ -181,105 +254,49 @@ class Systems:
 
 
 
-    def escape_velocity(self, gal, t0, ro=8, vo=220):
+    def inspiral_time(self, Tinsp_max=14):
         """
-        Calculates the escape velocity for each particle at their respective radius.
+        Calculates the GW inspiral time (in seconds) for the systems given their post-SN orbital properties
         """
 
-        print('Calculating particle escape velocities...\n')
+        print('Calculating inspiral times...\n')
 
-        # Read in Rvals, assuming particles start in the plane
-        R_vals = self.R * u.cm.to(u.kpc)
-        z_vals = np.zeros_like(R_vals)
+        Tinsps = []
+        lessthan_tH = 0
 
-        # specify radius and height at "infinity" in kpc
-        R_inf = 1000
-        z_inf = 1000
+        for idx in np.arange(self.Nsys):
 
-        if gal.interp:
-            full_pot = gal.interpolated_potentials[t0]
-            pot_at_inf = evaluatePotentials(full_pot, R=R_inf/ro, z=z_inf/ro)
+            # for systems that were disrupted, continue
+            if self.SNsurvive[idx] == False:
+                Tinsps.append(np.nan)
+                continue
 
-            Vesc = np.sqrt(2*\
-                (pot_at_inf - evaluatePotentials(full_pot, R_vals/ro, z=z_vals/ro)))
-            Vesc = Vesc.value*u.km.to(u.cm)
-            self.Vesc = Vesc
+            # if system is still bound, calculate the inspiral time using Peters 1964 (note that it takes in A in AU, returns Tinsp in Gyr)
+            else:
+                m1 = self.Mcomp[idx].value
+                m2 = self.Mns[idx].value
+                a0 = self.Apost[idx].to(u.AU).value
+                e0 = self.epost[idx].value
 
+                Tinsp = utils.inspiral_time_peters(a0, e0, m1, m2)
+
+                # count the number of systems that merge in more/less than a Hubble time
+                if (Tinsp < Tinsp_max):
+                    lessthan_tH += 1
+
+                Tinsps.append(Tinsp)
+
+        self.Tinsp = np.asarray(Tinsps)*u.Gyr
+
+        # return the fraction that merge within a Hubble time
+        if np.sum(self.SNsurvive) == 0:
+            return 0.0
         else:
-            full_pot = gal.full_potentials[:(t0+1)]
-            pot_at_inf = evaluatePotentials(full_pot, R_inf*u.kpc, z_inf*u.kpc)
-
-            Vesc = np.sqrt(2*\
-                (pot_at_inf - evaluatePotentials(full_pot, R_vals*u.kpc, z_vals*u.kpc)))
-            self.Vesc = Vesc.to(u.cm/u.s).value
-
-        return
-
-
-        
-
-
-    def galactic_velocity(self, gal, t0, fixed_potential, ro=8, vo=220):
-        """
-        Calculates the pre-SN galactic velocity for the tracer particles at their initial radius R. 
-        """
-
-        print('Calculating the pre-SN galactic velocity...\n')
-
-        # Using galpy's vcirc method, we can easily calculate the rotation velocity at any R
-        # Note we use the combination of *all* potentials up to the timestep t0
-        if fixed_potential:
-            t0_pot = len(gal.times)-2
-        else:
-            t0_pot = t0
-
-        if gal.interp:
-            ro_cgs = ro * u.kpc.to(u.cm)
-            vo_cgs = vo * u.km.to(u.cm)
-
-            R_vals = self.R / ro_cgs
-            full_pot = gal.interpolated_potentials[t0_pot]
-            Vcirc = gp_vcirc(full_pot, R_vals)
-
-            Vcirc = Vcirc.value*u.km.to(u.cm)
-            self.Vcirc = Vcirc
-
-        else:
-            R_vals = self.R*u.cm
-            full_pot = gal.full_potentials[:(t0_pot+1)]
-            Vcirc = gp_vcirc(full_pot, R_vals)
-            self.Vcirc = Vcirc.to(u.cm/u.s).value
-
-        
-        if not gal.interp:
-        # Just to have them, calculate the circular velocity of each component as well (only do this if we choose not to do the quick interpolation)
-            Vcirc_stars = gp_vcirc(gal.stars_potentials[:(t0_pot+1)], self.R*u.cm)
-            self.Vcirc_stars = Vcirc_stars.to(u.cm/u.s).value
-            Vcirc_gas = gp_vcirc(gal.gas_potentials[:(t0_pot+1)], self.R*u.cm)
-            self.Vcirc_gas = Vcirc_gas.to(u.cm/u.s).value
-            Vcirc_dm = gp_vcirc(gal.dm_potentials[:(t0_pot+1)], self.R*u.cm)
-            self.Vcirc_dm = Vcirc_dm.to(u.cm/u.s).value
-            
-
-        # Also, get mass enclosed at each rad by taking cumulative sum of mass profiles
-        mass_stars_enclosed = np.cumsum(gal.mass_stars_prof[t0])
-        mass_gas_enclosed = np.cumsum(gal.mass_gas_prof[t0])
-        mass_dm_enclosed = np.cumsum(gal.mass_dm_prof[t0])
-
-        # Create interpolation function for enclosed masses
-        mass_stars_enclosed_interp = interp1d(gal.rads, mass_stars_enclosed)
-        mass_gas_enclosed_interp = interp1d(gal.rads, mass_gas_enclosed)
-        mass_dm_enclosed_interp = interp1d(gal.rads, mass_dm_enclosed)
-        
-        # Calculate the enclosed mass for each of our tracer systems
-        mass_stars_enclosed_systems = mass_stars_enclosed_interp(self.R)
-        mass_gas_enclosed_systems = mass_gas_enclosed_interp(self.R)
-        mass_dm_enclosed_systems = mass_dm_enclosed_interp(self.R)
-
-        self.Menc = mass_stars_enclosed_systems+mass_gas_enclosed_systems+mass_dm_enclosed_systems
+            return float(lessthan_tH)/np.sum(self.SNsurvive)
 
 
 
+    
     def galactic_frame(self):
         """
         Transforms the velocity vectors of the system following the SN to the galactic frame, where the galaxy disk is in the x-y plane and the system is moving in the positive y direction prior to the SN. 
@@ -300,10 +317,10 @@ class Systems:
 
         # Save the velocity of the system immediately following the SN
         # Don't forget to add the pre-SN galactic velocity to the y-component!
-        self.Vpx = Vsys_vec[:,0]
-        self.Vpy = Vsys_vec[:,1] + self.Vcirc
-        self.Vpz = Vsys_vec[:,2]
-        self.Vpost = np.linalg.norm(np.asarray([self.Vpx,self.Vpy,self.Vpz]), axis=0)
+        self.Vpx = Vsys_vec[:,0]*u.km/u.s
+        self.Vpy = Vsys_vec[:,1]*u.km/u.s + self.Vcirc
+        self.Vpz = Vsys_vec[:,2]*u.km/u.s
+        self.Vpost = np.linalg.norm(np.asarray([self.Vpx,self.Vpy,self.Vpz]), axis=0)*u.km/u.s
 
         # NaN out the post-SN velocity for systems that were disrupted, as this is ambiguous
         disrupt_idx = np.argwhere(self.SNsurvive == False)
@@ -328,46 +345,8 @@ class Systems:
         self.Vpost = np.linalg.norm(np.asarray([self.Vpx,self.Vpy,self.Vpz]), axis=0)
 
 
-    def inspiral_time(self, Tinsp_max=14):
-        """
-        Calculates the GW inspiral time (in seconds) for the systems given their post-SN orbital properties
-        """
 
-        print('Calculating inspiral times...\n')
-
-        self.Tinsp = np.nan * np.ones(self.Nsys)
-
-        lt_tH_insp = 0
-        for idx in np.arange(self.Nsys):
-
-            # for systems that were disrupted, continue
-            if self.SNsurvive[idx] == False:
-                continue
-
-            # if system is still bound, calculate the inspiral time using Peters 1964
-            else:
-                m1 = self.Mcomp[idx] * u.g.to(u.Msun)
-                m2 = self.Mns[idx] * u.g.to(u.Msun)
-                a0 = self.Apost[idx] * u.cm.to(u.AU)
-                e0 = self.epost[idx]
-
-                self.Tinsp[idx] = utils.inspiral_time_peters(a0, e0, m1, m2) * u.Gyr.to(u.s)
-
-                # count the number of systems that merge in more/less than a Hubble time
-                if self.Tinsp[idx] < (Tinsp_max * u.Gyr.to(u.s)):
-                    lt_tH_insp += 1
-
-        # return the fraction that merge within a Hubble time
-        if np.sum(self.SNsurvive) == 0:
-            return 0.0
-        else:
-            return float(lt_tH_insp)/np.sum(self.SNsurvive)
-
-
-
-    
-
-    def evolve(self, gal, t0, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False):
+    def evolve(self, gal, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:

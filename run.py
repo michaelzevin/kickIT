@@ -2,9 +2,9 @@
 
 # ---- Import standard modules to the python path.
 import os
-import pdb
 import argparse
 import pdb
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -137,8 +137,10 @@ def main(args):
     
 
     # --- Read in interpolants here, if specified
+    interpolants = None
     if args.interp_path:
         interpolants = pickle.load(open(args.interp_path, 'rb'))
+        print('Using galactic potential interpolations living at {0:s}...\n'.format(args.interp_path))
 
         # Check that the interpolants have the same number of timesteps
         if len(interpolants) != len(gal.times):
@@ -146,7 +148,7 @@ def main(args):
 
     else:
         if args.differential_prof==True:
-            warnings.warn("If you're using differential stellar profiles, you might want to be using an interpolated potential instance to speed up the integrations!!!")
+            warnings.warn("If you're using differential stellar profiles, you might want to be using an interpolated potential instance to speed up the integrations!!!\n")
 
 
 
@@ -162,8 +164,9 @@ def main(args):
         'Vkick_sigma':args.Vkick_sigma, 'Vkick_min':args.Vkick_min, 'Vkick_max':args.Vkick_max,
         'R_mean':args.R_mean}
     
+    # FIXME: maybe should move the population sampling to another function?
+    # --- if fully sampling progenitor parameters...
     if args.sample_progenitor_props:
-        # fully sample progenitor parameters
         print('Fully sampling system parameters, determining systemic velocities and inspiral times...\n')
         sampled_parameters = sample.sample_parameters(gal, Nsys=args.Nsys, \
                                 Mcomp_method=args.Mcomp_method, \
@@ -177,45 +180,50 @@ def main(args):
                                 samples = args.samples_path, \
                                 fixed_birth = args.fixed_birth, \
                                 fixed_potential = args.fixed_potential)
-        systems = system.Systems(args.t0, sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
+
+    # --- otherwise we sample in only Vsys and Tinsp
+    else:
+        print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
+        
+        sampled_parameters = sample.sample_Vsys_R(gal, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_birth=args.fixed_birth, fixed_potential=args.fixed_potential)
+
+
+
+    # --- Initialize systems class
+    systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props)
+
+    # --- Calculate the instantaneous particle escape velocities and galactic velocities at birth
+    systems.escape_velocity(gal, interpolants)
+    systems.galactic_velocity(gal, interpolants, args.fixed_potential)
+
+    # --- If we sampled the porgenitor properties, we need to determine the impact of the SN and the inspiral time, and bring the system into the galactic frame
+    if args.sample_progenitor_props:
         # implement the supernova
         systems.SN()
         # check if the systems survived the supernova, and return survival fraction
         survival_fraction = systems.check_survival()
-        # calculate the instantaneous particle escape velocities
-        systems.escape_velocity(gal, args.t0)
-        # calculate the pre-SN galactic velocity
-        systems.galactic_velocity(gal, args.t0, args.fixed_potential)
-        # transform the systemic velocity into the galactic frame and add pre-SN velocity
-        systems.galactic_frame()
         # calculate the inspiral time for systems that survived
         tH_inspiral_fraction = systems.inspiral_time()
+        # transform the systemic velocity into the galactic frame and add pre-SN velocity
+        systems.galactic_frame()
 
 
+    # --- Otherwise, we just decompose the Vsys array according to SYStheta nad SYSphi
     else:
-        # sampling in only Vsys and Tinsp
-        print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
-        
-        sampled_parameters = sample.sample_Vsys_R(gal, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_birth=args.fixed_birth, fixed_potential=args.fixed_potential)
-        # initialize system class
-        systems = system.Systems(args.t0, sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
-        # calculate the instantaneous particle escape velocities
-        systems.escape_velocity(gal, args.t0)
-        # calculate the pre-SN galactic velocity
-        systems.galactic_velocity(gal, args.t0, args.fixed_potential)
         # project systemic velocity into galactic coordinates
         systems.decompose_Vsys()
 
 
 
-    # FIXME: in samples and systems.evolve, we can just choose a t0 according to the sfr weighting!
-    # FIXME: should move the population sampling to another function
+
+
+
 
 
 
     # --- kinematically evolve the tracer particles
 
-    systems.evolve(gal, args.t0, multiproc=args.multiproc, \
+    systems.evolve(gal, multiproc=args.multiproc, \
                         int_method=args.int_method, \
                         Tinsp_lim=args.Tinsp_lim, \
                         Tint_max=args.Tint_max, \

@@ -44,6 +44,10 @@ def sample_parameters(gal, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian
     bin_params['t0'] = sample_t0(Nsys, gal, fixed_birth=fixed_birth)
     bin_params['R'] = sample_R(Nsys, gal, bin_params['t0'], method=R_method, mean=params_dict['R_mean'], samples=popsynth_data, fixed_potential=fixed_potential)
 
+    # --- write the birth time and birth redshift
+    bin_params['tbirth'] = gal.times[bin_params['t0']]
+    bin_params['zbirth'] = gal.redz[bin_params['t0']]
+
     if VERBOSE:
         print('Parameters sampled according to the following methods:')
         print('  Mcomp: {0:s}\n  Mns: {1:s}\n  Mhe: {2:s}\n  Apre: {3:s}\n  epre: {4:s}\n  Vkick: {5:s}\n  R: {6:s}\n'.format(Mcomp_method,Mns_method,Mhe_method,Apre_method,epre_method,Vkick_method,R_method))
@@ -402,6 +406,11 @@ def sample_Vsys_R(gal, Nsys=1, Vsys_range=(0,1000), R_method='sfr', fixed_birth=
     # fix Tinsp and SNsurvive
     bin_params['Tinsp'] = 14.0 * u.Gyr
     bin_params['SNsurvive'] = True
+
+    # --- write the birth time and birth redshift
+    bin_params['tbirth'] = gal.times[bin_params['t0']]
+    bin_params['zbirth'] = gal.redz[bin_params['t0']]
+
 
     return bin_params
 
