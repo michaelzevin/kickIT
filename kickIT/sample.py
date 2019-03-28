@@ -10,7 +10,11 @@ from astropy.table import Table
 from . import galaxy_history
 
 
-def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian', Mhe_method='uniform', Apre_method='uniform', epre_method='circularized', Vkick_method='maxwellian', R_method='sfr', params_dict=None, samples=None, fixed_potential=False, verbose=False):
+
+VERBOSE=True
+
+
+def sample_parameters(gal, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian', Mhe_method='uniform', Apre_method='uniform', epre_method='circularized', Vkick_method='maxwellian', R_method='sfr', params_dict=None, samples=None, fixed_birth=None, fixed_potential=None):
     """
     Calls all the sampling functions defined below. 
     Returns a dataframe with the sampled parameters. 
@@ -19,7 +23,7 @@ def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='ga
     When method='popsynth', must provide the path to the sample as the 'samples' argument
     Units of data must be: Msun, Run, km/s, and column names must be same as below
     """
-    bin_params=pd.DataFrame(columns=['Mns', 'Mcomp', 'Mhe', 'Apre', 'epre', 'Vkick', 'R'])
+    bin_params=pd.DataFrame(columns=['Mns', 'Mcomp', 'Mhe', 'Apre', 'epre', 'Vkick', 't0', 'R'])
 
     # if popsynth samples are provided, sample systems randomly from the popsynth data
     if 'popsynth' in (Mcomp_method, Mns_method, Mhe_method, Apre_method, epre_method, Vkick_method, R_method):
@@ -37,9 +41,10 @@ def sample_parameters(gal, t0=0, Nsys=1, Mcomp_method='gaussian', Mns_method='ga
     bin_params['Apre'] = sample_Apre(Nsys, Amin=params_dict['Apre_min'], Amax=params_dict['Apre_max'], method=Apre_method, mean=params_dict['Apre_mean'], samples=popsynth_data)
     bin_params['epre'] = sample_epre(Nsys, method=epre_method, samples=popsynth_data)
     bin_params['Vkick'] = sample_Vkick(Nsys, Vmin=params_dict['Vkick_min'], Vmax=params_dict['Vkick_max'], method=Vkick_method, sigma=params_dict['Vkick_sigma'], samples=popsynth_data)
-    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method, mean=params_dict['R_mean'], samples=popsynth_data, fixed_potential=fixed_potential)
+    bin_params['t0'] = sample_t0(Nsys, gal, fixed_birth=fixed_birth)
+    bin_params['R'] = sample_R(Nsys, gal, bin_params['t0'], method=R_method, mean=params_dict['R_mean'], samples=popsynth_data, fixed_potential=fixed_potential)
 
-    if verbose:
+    if VERBOSE:
         print('Parameters sampled according to the following methods:')
         print('  Mcomp: {0:s}\n  Mns: {1:s}\n  Mhe: {2:s}\n  Apre: {3:s}\n  epre: {4:s}\n  Vkick: {5:s}\n  R: {6:s}\n'.format(Mcomp_method,Mns_method,Mhe_method,Apre_method,epre_method,Vkick_method,R_method))
 
@@ -64,39 +69,35 @@ def sample_Mcomp(Nsys, method='gaussian', mean=1.33, sigma=0.09, samples=None, g
     if method=='posterior':
         samples = Table.read(gw_samples, format='ascii')
         Mcomp = samples['m1_source'][np.random.randint(0,len(samples['m1_source']),Nsys)]
-        return Mcomp
 
 
     elif method=='mean':
         samples = Table.read(gw_samples, format='ascii')
-        Mcomp = np.ones(Nsys)*np.mean(samples['m1_source'])*u.Msun.to(u.g)
-        return Mcomp
+        Mcomp = np.ones(Nsys)*np.mean(samples['m1_source'])
 
 
     elif method=='median':
         samples = Table.read(gw_samples, format='ascii')
-        Mcomp = np.ones(Nsys)*np.median(samples['m1_source'])*u.Msun.to(u.g)
-        return Mcomp
+        Mcomp = np.ones(Nsys)*np.median(samples['m1_source'])
 
 
     elif method=='gaussian':
-        Mcomp = np.random.normal(mean, sigma, Nsys)*u.Msun.to(u.g)
-        return Mcomp
+        Mcomp = np.random.normal(mean, sigma, Nsys)
 
 
     elif method=='fixed':
-        Mcomp = np.ones(Nsys) * mean*u.Msun.to(u.g)
-        return Mcomp
+        Mcomp = np.ones(Nsys) * mean
         
     elif method=='popsynth':
         if 'Mcomp' not in samples.columns:
             raise NameError("Series '{0:s}' not in popsynth table".format('Mcomp'))
-        Mcomp = np.asarray(samples['Mcomp'] * u.Msun.to(u.g))
-        return Mcomp
+        Mcomp = np.asarray(samples['Mcomp'])
 
 
     else:
         raise ValueError("Undefined companion mass sampling method '{0:s}'.".format(method))
+
+    return Mcomp*u.Msun
 
 
 
@@ -117,39 +118,35 @@ def sample_Mns(Nsys, method='gaussian', mean=1.33, sigma=0.09, samples=None, gw_
     if method=='posterior':
         samples = Table.read(gw_samples, format='ascii')
         Mns = samples['m2_source'][np.random.randint(0,len(samples['m2_source']),Nsys)]
-        return Mns
 
 
     elif method=='mean':
         samples = Table.read(gw_samples, format='ascii')
-        Mns = np.ones(Nsys)*np.mean(samples['m2_source'])*u.Msun.to(u.g)
-        return Mns
+        Mns = np.ones(Nsys)*np.mean(samples['m2_source'])
 
 
     elif method=='median':
         samples = Table.read(gw_samples, format='ascii')
-        Mns = np.ones(Nsys)*np.median(samples['m2_source'])*u.Msun.to(u.g)
-        return Mns
+        Mns = np.ones(Nsys)*np.median(samples['m2_source'])
 
 
     elif method=='gaussian':
-        Mns = np.random.normal(mean, sigma, Nsys)*u.Msun.to(u.g)
-        return Mns
+        Mns = np.random.normal(mean, sigma, Nsys)
 
 
     elif method=='fixed':
-        Mns = np.ones(Nsys) * mean*u.Msun.to(u.g)
-        return Mns
+        Mns = np.ones(Nsys) * mean
         
     elif method=='popsynth':
         if 'Mns' not in samples.columns:
             raise NameError("Series '{0:s}' not in popsynth table".format('Mns'))
-        Mns = np.asarray(samples['Mns'] * u.Msun.to(u.g))
-        return Mns
+        Mns = np.asarray(samples['Mns'])
 
 
     else:
         raise ValueError("Undefined remnant mass sampling method '{0:s}'.".format(method))
+
+    return Mns*u.Msun
 
 
 
@@ -168,8 +165,7 @@ def sample_Mhe(Nsys, Mns, Mmax=8.0, method='uniform', mean=3, sigma=0.5, samples
     """
 
     if method=='uniform':
-        Mhe = np.asarray([np.random.uniform(Mmin, Mmax*u.Msun.to(u.g)) for Mmin in Mns])
-        return Mhe
+        Mhe = np.asarray([np.random.uniform(Mmin.value, Mmax) for Mmin in Mns])
 
 
     elif method=='powerlaw':
@@ -186,15 +182,14 @@ def sample_Mhe(Nsys, Mns, Mmax=8.0, method='uniform', mean=3, sigma=0.5, samples
             Anorm=1./A1
             II=np.random.uniform(0,1)
             Mhe.append(invpdf(II,Mmin))
-        return np.asarray(Mhe)
+        Mhe = np.asarray(Mhe)
 
 
     elif method=='gaussian':
-        Mhe = np.random.normal(mean, sigma, Nsys)*u.Msun.to(u.g)
+        Mhe = np.random.normal(mean, sigma, Nsys)
         # if any of the values for Mhe drawn from the gaussian are less massive than Mns, set their value to Mne
         neg_vals = np.argwhere((Mhe-Mns) < 0)
         Mhe[neg_vals] = Mns[neg_vals]
-        return Mhe
 
 
     elif method=='fixed':
@@ -202,19 +197,18 @@ def sample_Mhe(Nsys, Mns, Mmax=8.0, method='uniform', mean=3, sigma=0.5, samples
             raise ValueError("No fixed mass specified!")
         if (mean*u.Msun.to(u.g) < Mns).any():
             raise ValueError("Fixed mass of {0:0.2f} Msun is below one of the NS masses!".format(mean))
-        Mhe = np.ones(Nsys)*mean*u.Msun.to(u.g)
-        return Mhe
+        Mhe = np.ones(Nsys)*mean
 
     elif method=='popsynth':
         if 'Mhe' not in samples.columns:
             raise NameError("Series '{0:s}' not in popsynth table".format('Mhe'))
-        Mhe = np.asarray(samples['Mhe'] * u.Msun.to(u.g))
-        return Mhe
+        Mhe = np.asarray(samples['Mhe'])
 
 
     else:
         raise ValueError("Undefined Mhe sampling method '{0:s}'.".format(method))
 
+    return Mhe*u.Msun
 
 
 def sample_Apre(Nsys, Amin=0.1, Amax=10, method='uniform', mean=None, samples=None):
@@ -229,39 +223,36 @@ def sample_Apre(Nsys, Amin=0.1, Amax=10, method='uniform', mean=None, samples=No
     """
 
     if method=='uniform':
-        Apre = np.random.uniform(Amin, Amax, Nsys)*u.Rsun.to(u.cm)
-        return Apre
+        Apre = np.random.uniform(Amin, Amax, Nsys)
 
 
     elif method=='log':
-        Apre = 10**np.random.uniform(np.log10(Amin), np.log10(Amax), Nsys)*u.Rsun.to(u.cm)
-        return Apre
+        Apre = 10**np.random.uniform(np.log10(Amin), np.log10(Amax), Nsys)
 
 
     elif method=='gaussian':
-        Apre = np.random.normal(mean, sigma, Nsys)*u.Rsun.to(u.cm)
+        Apre = np.random.normal(mean, sigma, Nsys)
         # if any of the values for Apre drawn from the gaussian are below the specified lower limit, set their value to Amin
-        neg_vals = np.argwhere((Apre-Amin*u.Rsun.to(u.cm)) < 0)
-        Apre[neg_vals] = Amin*u.Rsun.to(u.cm)
-        return Mhe
+        neg_vals = np.argwhere((Apre-Amin) < 0)
+        Apre[neg_vals] = Amin
+        Apre = np.asarray(Apre)
 
 
     elif method=='fixed':
         if mean==None:
             raise ValueError("No fixed SMA specified!")
-        Apre = np.ones(Nsys)*mean*u.Rsun.to(u.cm)
-        return Apre
+        Apre = np.ones(Nsys)
 
     elif method=='popsynth':
         if 'Apre' not in samples.columns:
             raise NameError("Series '{0:s}' not in popsynth table".format('Apre'))
-        Apre = np.asarray(samples['Apre'] * u.Rsun.to(u.cm))
-        return Apre
+        Apre = np.asarray(samples['Apre'])
 
 
     else:
         raise ValueError("Undefined Apre sampling method '{0:s}'.".format(method))
 
+    return Apre*u.Rsun
 
 
 def sample_epre(Nsys, method='circularized', samples=None):
@@ -274,23 +265,21 @@ def sample_epre(Nsys, method='circularized', samples=None):
     """
     if method=='circularized':
         epre = np.zeros(Nsys)
-        return epre
 
 
     elif method=='thermal':
         epre = np.sqrt(np.random.uniform(0, 1, Nsys))
-        return epre
 
     elif method=='popsynth':
         if 'epre' not in samples.columns:
             raise NameError("Series '{0:s}' not in popsynth table".format('epre'))
         epre = np.asarray(samples['epre'])
-        return epre
 
 
     else:
         raise ValueError("Undefined epre sampling method '{0:s}'.".format(method))
 
+    return epre
 
 
 def sample_Vkick(Nsys, Vmin=0, Vmax=1000, method='maxwellian', sigma=265, samples=None):
@@ -305,31 +294,28 @@ def sample_Vkick(Nsys, Vmin=0, Vmax=1000, method='maxwellian', sigma=265, sample
     """
 
     if method=='uniform':
-        Vkick_samp = np.random.uniform(Vmin, Vmax, size=Nsys)*u.km.to(u.cm)
-        return Vkick
+        Vkick_samp = np.random.uniform(Vmin, Vmax, size=Nsys)
 
 
     elif method=='maxwellian':
-        Vkick = maxwell.rvs(loc=0, scale=sigma, size=Nsys)*u.km.to(u.cm)
-        return Vkick
+        Vkick = maxwell.rvs(loc=0, scale=sigma, size=Nsys)
 
 
     elif method=='fixed':
         if sigma==None:
             raise ValueError("No fixed Vkick specified!")
-        Vkick = np.ones(Nsys)*sigma*u.km.to(u.cm)
-        return Vkick
+        Vkick = np.ones(Nsys)*sigma
 
     elif method=='popsynth':
         if 'Vkick' not in samples.columns:
             raise NameError("Series '{0:s}' not in popsynth table".format('Vkick'))
-        Vkick = np.asarray(samples['Vkick'] * u.km.to(u.cm))
-        return Vkick
+        Vkick = np.asarray(samples['Vkick'])
 
 
     else:
         raise ValueError("Undefined Vkick sampling method '{0:s}'.".format(method))
         
+    return Vkick*u.km/u.s
 
 
 def sample_R(Nsys, gal, t0, method='sfr', mean=3, samples=None, fixed_potential=False):
@@ -348,43 +334,55 @@ def sample_R(Nsys, gal, t0, method='sfr', mean=3, samples=None, fixed_potential=
         # The CDF of this distribution is P(R) = 1/Gamma(k) * gamma(k, x/theta)
 
         # First, get the galaxy scaling from the observed effective radius
-        mstar_final = gal.mass_stars[len(gal.times)-1]
-        _, R_final = galaxy_history.baryons.sfr_rad_dist(gal.rads, mstar_final)
-        R_scaling = gal.obs_rad_eff / R_final
+        _, R_final = galaxy_history.baryons.sfr_rad_dist(gal.rads.cgs.value, gal.obs_props['mass_stars'].cgs.value)
+        R_final = (R_final*u.cm).to(u.kpc)
+        R_scaling = (gal.obs_props['rad_eff'] / R_final).value
 
         # if fixed_potential, set t0 to the last step
         if fixed_potential:
-            t0 = len(gal.times)-1
+            t0 = (np.ones(Nsys)*fixed_potential).astype(int)
 
         mstar = gal.mass_stars[t0]
-        rs = galaxy_history.baryons.sfr_disk_rad(mstar, R_scaling) * u.cm.to(u.kpc)
-        R = np.random.gamma(shape=3, scale=rs, size=Nsys)*u.kpc.to(u.cm)
-        return R
+        rs = (galaxy_history.baryons.sfr_disk_rad(mstar.cgs.value, R_scaling) * u.cm.to(u.kpc))
+        R = np.random.gamma(shape=3, scale=rs, size=Nsys)
 
 
     elif method=='fixed':
         if mean==None:
             raise ValueError("No fixed R specified!")
-        R = np.ones(Nsys)*mean*u.kpc.to(u.cm)
-        return R
+        R = np.ones(Nsys)*mean
 
     elif method=='popsynth':
         if 'R' not in samples.columns:
             raise NameError("Series '{0:s}' not in popsynth table".format('R'))
-        R = np.asarray(samples['R'] * u.kpc.to(u.cm))
-        return R
+        R = np.asarray(samples['R'])
 
 
     else:
         raise ValueError("Undefined R sampling method '{0:s}'.".format(method))
 
+    return R*u.kpc
 
 
+
+
+def sample_t0(Nsys, gal, fixed_birth=False):
+    """
+    Samples the initial timestep at which particles are initiated, according to the sfr of the galaxy.
+    If fixed_birth is specified, then will initiate all particles at the specified t0.
+    """
+    if fixed_birth:
+        t0 = (fixed_birth * np.ones(Nsys)).astype(int)
+
+    else:
+        t0 = np.random.choice(np.arange(0,len(gal.times)), Nsys, p=gal.sfr_weights)
+
+    return t0
 
 
 ### Option B: separate out the progenitor sampling and the evolution ###
 
-def sample_Vsys_R(gal, t0=0, Nsys=1, Vsys_range=(0,1000), R_method='sfr', fixed_potential=False, verbose=False):
+def sample_Vsys_R(gal, Nsys=1, Vsys_range=(0,1000), R_method='sfr', fixed_birth=False, fixed_potential=False):
     """
     Samples only radii and systemic velocity. 
 
@@ -396,11 +394,13 @@ def sample_Vsys_R(gal, t0=0, Nsys=1, Vsys_range=(0,1000), R_method='sfr', fixed_
     bin_params=pd.DataFrame(columns=['Vsys', 'R', 'Tinsp', 'SNsurvive'])
 
     # sample Vsys
-    bin_params['Vsys'] = np.random.uniform(Vsys_range[0],Vsys_range[1], size=Nsys) * u.km.to(u.cm)
+    bin_params['Vsys'] = np.random.uniform(Vsys_range[0],Vsys_range[1], size=Nsys) * u.km/u.s
+    # sample t0
+    bin_params['t0'] = sample_t0(Nsys, gal, fixed_birth=fixed_birth)
     # sample R
-    bin_params['R'] = sample_R(Nsys, gal, t0, method=R_method, fixed_potential=fixed_potential)
+    bin_params['R'] = sample_R(Nsys, gal, bin_params['t0'], method=R_method, fixed_potential=fixed_potential)
     # fix Tinsp and SNsurvive
-    bin_params['Tinsp'] = 14.0 * u.Gyr.to(u.s)
+    bin_params['Tinsp'] = 14.0 * u.Gyr
     bin_params['SNsurvive'] = True
 
     return bin_params

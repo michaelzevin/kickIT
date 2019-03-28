@@ -160,7 +160,7 @@ class GalaxyHistory:
 
         if VERBOSE:
             print("\nFinal total masses: stars={:.1e}, gas={:.1e}, DM={:.1e}".format(mass_stars[-1],mass_gas[-1],mass_dm[-1]))
-            print("Final SFR={:.1e}".format(gal_sfr[-1]))
+            print("Final SFR={:.1e}\n".format(gal_sfr[-1]))
 
         return
 

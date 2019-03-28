@@ -35,8 +35,8 @@ def parse_commandline():
     parser.add_argument('-mp', '--multiproc', type=str, default=None, help="If specified, will parallelize over the number of cores provided as an argument. Can also use the string 'max' to parallelize over all available cores. Default is None.")
 
     # defining grid properties for interpolations
-    parser.add_argument('-rg', '--Rgrid', type=int, default=500, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
-    parser.add_argument('-zg', '--Zgrid', type=int, default=300, help="Number of gridpoints for the Z-component of the interpolation model. Default is 50.") 
+    parser.add_argument('-rg', '--Rgrid', type=int, default=100, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
+    parser.add_argument('-zg', '--Zgrid', type=int, default=50, help="Number of gridpoints for the Z-component of the interpolation model. Default is 50.") 
     parser.add_argument('--Rgrid-max', type=float, default=1e3, help="Maximum R value for interpolated potentials. Default is 1e3.")
     parser.add_argument('--Zgrid-max', type=float, default=1e2, help="Maximum Z value for interpolated potentials. Default is 1e2.")
 
