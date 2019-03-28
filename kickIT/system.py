@@ -346,12 +346,12 @@ class Systems:
 
 
 
-    def evolve(self, gal, ro=8, vo=220, multiproc=None, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False):
+    def evolve(self, gal, multiproc=None, int_method='odeint', Tint_max=120, resolution=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False, interpolants=None):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
             1. The system evolves until the time of the sGRB
-            2. The system merges due to GW emission (if Tinsp_lim=True, otherwise will evolve until the time of the sgrb)
+            2. The system merges due to GW emission
 
         Each system will evolve through a series of galactic potentials specified in distinct redshift bins in the 'gal' class
 
@@ -359,7 +359,7 @@ class Systems:
         """
         print('Evolving orbits of the tracer particles...\n')
 
-        # set up arrays/lists of arrays for storing output
+        # --- set up arrays/lists of arrays for storing output
         merger_redzs = []
         R_offsets = []
         Rproj_offsets = []
@@ -371,12 +371,20 @@ class Systems:
         vZs = []
 
 
-        # get the pertinent data for the evolution function
+        # --- get the pertinent data for the evolution function
         systems_info = []
         for idx in np.arange(self.Nsys):
-            systems_info.append([idx,self.SNsurvive[idx],self.Tinsp[idx],self.R[idx],self.Vpx[idx],self.Vpy[idx],self.Vpz[idx]])
+            systems_info.append([idx,self.t0[idx],self.SNsurvive[idx],self.Tinsp[idx],self.R[idx],self.Vpx[idx],self.Vpy[idx],self.Vpz[idx]])
 
-        # enable multiprocessing, if specifed
+
+        # --- initialize integrate_orbits function
+        func = partial(integrate_orbits, gal=gal, int_method=int_method, Tint_max=Tint_max, resolution=resolution, save_traj=save_traj, downsample=downsample, outdir=outdir, fixed_potential=fixed_potential, interpolants=interpolants)
+
+
+        # --- CALL THE INTEGRATION FUNCTION AND EVOLVE --- #
+
+
+        # --- enable multiprocessing, if specifed
         if multiproc:
             if multiproc=='max':
                 mp = multiprocessing.cpu_count()
@@ -385,7 +393,6 @@ class Systems:
 
             # initialize the parallelization, and specify function arguments
             pool = multiprocessing.Pool(mp)
-            func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tint_max=Tint_max, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, fixed_potential=fixed_potential, VERBOSE=self.VERBOSE)
 
             start = time.time()
             print('Parallelizing integration of the orbits over {0:d} cores...'.format(mp))
@@ -399,15 +406,13 @@ class Systems:
             print('Finished! It took {0:0.2f}s\n'.format(stop-start))
 
 
-
-        # otherwise, loop over all tracers in serial
+        # --- otherwise, loop over all tracers in serial
         else:
             start = time.time()
             print('Performing the integrations in serial...')
 
             for system in systems_info:
 
-                func = partial(integrate_orbits, t0=t0, gal=gal, int_method=int_method, Tinsp_lim=Tinsp_lim, Tint_max=Tint_max, Nsteps_per_bin=Nsteps_per_bin, save_traj=save_traj, downsample=downsample, outdir=outdir, fixed_potential=fixed_potential,VERBOSE=self.VERBOSE)
                 X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset,merger_redz = func(system)
 
                 Xs.append(X)
@@ -424,34 +429,38 @@ class Systems:
             print('Finished! It took {0:0.2f}s\n'.format(stop-start))
 
 
-        # store everything in systems class
-        self.merger_redz = np.asarray(merger_redzs)
-        self.R_offset = np.asarray(R_offsets)
-        self.Rproj_offset = np.asarray(Rproj_offsets)
-        self.X = np.asarray(Xs)
-        self.Y = np.asarray(Ys)
-        self.Z = np.asarray(Zs)
-        self.vX = np.asarray(vXs)
-        self.vY = np.asarray(vYs)
-        self.vZ = np.asarray(vZs)
+        # --- Now that everything is finished, store in the systems class and write trajectory files
+        self.merger_redz = np.asarray(merger_redzs)*u.dimensionless_unscaled
+        self.R_offset = np.asarray(R_offsets)*u.kpc
+        self.Rproj_offset = np.asarray(Rproj_offsets)*u.kpc
+        self.X = np.asarray(X)*u.kpc
+        self.Y = np.asarray(Ys)*u.kpc
+        self.Z = np.asarray(Zs)*u.kpc
+        self.vX = np.asarray(vXs)*u.km/u.s
+        self.vY = np.asarray(vYs)*u.km/u.s
+        self.vZ = np.asarray(vZs)*u.km/u.s
 
         # combine the trajectories into a single hdf5 file, if save_traj==True
         print('Combining trajectory files into single hdf5 file...\n')
         if save_traj==True:
+            trajectories = pd.DataFrame()
             for f in os.listdir(outdir):
                 if 'trajectories_' in f:
                     temp = pd.read_hdf(outdir+'/'+f, key='system')
                     _, idx = f.split('_')
                     idx, _ = idx.split('.')
-                    temp.to_hdf(outdir+'/trajectories.hdf', key='system_'+str(idx))
+                    temp['idx'] = idx
+                    trajectories = trajectories.append(temp)
                     os.remove(outdir+'/'+f)
+
+            trajectories.to_hdf(outdir+'/output.hdf', key='trajectories')
 
         return
 
             
 
 
-    def write(self, outdir, t0):
+    def write(self, outdir):
         """Write data as hdf file to specified outpath.
         Each key represents a timestep at which the particles are initialed in the galaxy model.
         """
@@ -460,22 +469,18 @@ class Systems:
 
         tracers = pd.DataFrame()
         for attr, values in self.__dict__.items():
-            if attr not in ['VERBOSE','Nsys']:
+            if attr not in ['Nsys']:
                 tracers[attr] = values
 
-        step_key = 'step_{:03d}'.format(t0)
-
-        tracers.to_hdf(outdir+'/tracers.hdf', key=step_key, mode='a')
+        tracers.to_hdf(outdir+'/output.hdf', key='tracers', mode='a')
             
         return
 
 
 
 
-def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint_max=60, Nsteps_per_bin=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False, VERBOSE=False):
+def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False, interpolants=None):
     """Function for integrating orbits. 
-
-    If Tinsp_lim==False, will integrate ALL systems until the time of the sgrb, regardless of Tinsp.
     
     Tint_max will end integration if t_int > Tint_max.
 
@@ -493,23 +498,24 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
 
     # system info
     idx = system[0]
-    SNsurvive = system[1]
-    Tinsp = system[2]
-    R = system[3]
-    Vpx = system[4]
-    Vpy = system[5]
-    Vpz = system[6]
+    t0 = system[1]
+    SNsurvive = system[2]
+    Tinsp = system[3]
+    R = system[4]
+    Vpx = system[5]
+    Vpy = system[6]
+    Vpz = system[7]
 
     # gal info
-    interp = gal.interp
     times = gal.times
     redz = gal.redz
-    full_potentials = gal.full_potentials
-    if interp:
-        interpolated_potentials = gal.interpolated_potentials
+    if interpolants:
+        potentials = interpolants
+    else:
+        potentials = gal.full_potentials
     
     # initialize cosmology
-    cosmo = cosmology.Cosmology()
+    cosmo = gal.cosmo
 
     INSP_FLAG=False
     MERGED=False
@@ -526,105 +532,77 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
             return X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset,merger_redz
 
 
-        # if the system survived the supernova, jot down its inspiral time
-        if interp:
-            Tinsp = utils.Tcgs_to_nat(Tinsp)
-
         # keep track of the time that has elapsed
-        T_elapsed = 0
-
-
-        ### MAIN LOOP ### 
-        # through all redshifts and evolving potential starting at timestep t0
         tt=t0
+        T_elapsed = 0*u.Gyr
 
+
+        ### --- MAIN LOOP --- ### 
         while tt < (len(times)-1):
 
-            # if potential is held fixed, 'tt_pot' is the last timestep
+            # --- if potential is held fixed, write down the timestep of the potential being used
             if fixed_potential:
-                tt_pot = len(times)-2
+                tt_pot = fixed_potential
             else:
                 tt_pot = tt
 
-            # first, transform the post-SN systemic velocity into cylindrical coordinates
+            # --- for the first step, transform the post-SN systemic velocity into cylindrical coordinates
             if tt==t0:
-                # by construction, the systems start in the galactic plane, at x=R, y=0, and therefore phi=0
-                # also, galpy's orbit integrator takes in vT = R*vPhi
-                R,Phi,Z,vR,vPhi,vZ = utils.cartesian_to_cylindrical(R,0.0,0.0,Vpx,Vpy,Vpz)
-                vT = R*vPhi
-                if interp:
-                    R,vR,vT,Z,vZ,Phi = utils.orbit_cgs_to_nat(R,vR,vT,Z,vZ,Phi)
+                # by construction, the systems start in the galactic plane, at x=R, y=0, and therefore phi=0 (note that galpy's orbit integrator takes in vT = R*vPhi)
+                R,Phi,Z,vR,vPhi,vZ = utils.cartesian_to_cylindrical(R.to(u.km),0.0*u.km,0.0*u.km,Vpx,Vpy,Vpz)
+                vT = (R.to(u.km))*vPhi
                     
             else:
-                # extract the orbital properties at the end of the previous integration (note that galpy output is [r,vR,vT,Z,vZ,T] and already in natural units)
-                R,vR,vT,Z,vZ,Phi = orb.getOrbit()[-1]
-                Phi = Phi % (2*np.pi)
-                if not interp:
-                    # convert from galpy's 'natural' units to cgs
-                    R,vR,vT,Z,vZ,Phi = utils.orbit_nat_to_cgs(R,vR,vT,Z,vZ,Phi)
+                # --- otherwise, extract the orbital properties at the end of the previous integration (note that galpy output is [r,vR,vT,Z,vZ,T] are in natural units, so we need to convert to be consistent).
+                R = orb.getOrbit()[-1,0]
+                vR = orb.getOrbit()[-1,1]
+                vT = orb.getOrbit()[-1,2]
+                Z = orb.getOrbit()[-1,3]
+                vZ = orb.getOrbit()[-1,4]
+                Phi = orb.getOrbit()[-1,5]
+                R,vR,vT,Z,vZ,Phi = utils.orbit_nat_to_phys(R,vR,vT,Z,vZ,Phi)
     
+
             # record the amount of time that passes in this step
-            # compare the total time passed to the inspiral time of the system
             dt = times[tt+1]-times[tt]
-            if interp:
-                dt = utils.Tcgs_to_nat(dt)
 
 
-            # --- See if the merger occurred during this step
-            # note that if Tinsp_lim=False, it will continue the integration until the time of the sGRB
-            if (((T_elapsed+dt) > Tinsp) and INSP_FLAG==False):
+            # --- See if the merger occurred during this step --- #
+            if ((T_elapsed+dt) > Tinsp):
 
-                # see where it merged
-                dt_merge = (Tinsp - T_elapsed)
+                # adjust dt to when it merged
+                dt = Tinsp - T_elapsed
 
                 # get timesteps for this integration (set to 1000 steps for now)
-                if interp:
-                    ts = np.linspace(0,dt_merge,Nsteps_per_bin)
-                else:
-                    ts = np.linspace(0*u.s,dt_merge*u.s,Nsteps_per_bin)
+                ts = np.linspace(0*u.Gyr,dt,resolution)
 
                 # initialize the orbit and integrate, store redshift of merger
-                if interp:
-                    orb = gp_orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
-                    orb.integrate(ts, interpolated_potentials[tt_pot], method=int_method)
-                    age = utils.Tcgs_to_nat(times[t0])+Tinsp
-                    merger_redz = float(cosmo.tage_to_z(utils.Tnat_to_cgs(age)))
-                else:
-                    orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
-                    orb.integrate(ts, full_potentials[(tt_pot+1)], method=int_method)
-                    age = times[t0]+Tinsp
-                    merger_redz = float(cosmo.tage_to_z(age))
+                orb = Orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
+                orb.integrate(ts, potentials[tt_pot], method=int_method)
 
-                INSP_FLAG=True
-                MERGED=True
+                age = times[t0]+Tinsp
+                merger_redz = float(cosmo.tage_to_z(age.to(u.s)))
 
-                # If Tinsp_lim==True, stop the integration here
-                if Tinsp_lim==True:
-                    FINISHED_EVOLVING = True
-                    stop_time = time.time()
+                FINISHED_EVOLVING = True
+                stop_time = time.time()
 
-                    if VERBOSE:
-                        print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}...integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
-                    break
+                if VERBOSE:
+                    print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}...integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
+                break
 
 
-            # --- If it didn't merge, evolve until the next timestep
-            T_elapsed += dt
+            # --- If it didn't merge, evolve until the next timestep --- #
 
-            # get timesteps for this integration (set to 1000 steps for now)
-            if interp:
-                ts = np.linspace(0,dt,Nsteps_per_bin)
-            else:
-                ts = np.linspace(0*u.s,dt*u.s,Nsteps_per_bin)
+            # get timesteps for this integration
+            ts = np.linspace(0*u.Gyr,dt,resolution)
 
             # initialize the orbit and integrate
-            if interp:
-                orb = gp_orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
-                orb.integrate(ts, interpolated_potentials[tt_pot], method=int_method)
-            else:
-                orb = gp_orbit(vxvv=[R*u.cm, vR*(u.cm/u.s), vT*(u.cm/u.s), Z*u.cm, vZ*(u.cm/u.s), Phi*u.rad])
-                orb.integrate(ts, full_potentials[(tt_pot+1)], method=int_method)
+            orb = Orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
+            orb.integrate(ts, potentials[tt_pot], method=int_method)
 
+
+
+            # --- Checks to see if integration should be terminated --- #
 
             # if it evolved until the time of the sGRB, end the integration
             if tt == (len(times)-2):
@@ -637,10 +615,10 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                         print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}...integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
 
                 else:
-                    # set merger_redz to 0
+                    # set merger_redz to 0 to indicate that it did not merge
                     merger_redz = 0
                     if VERBOSE:
-                        print('  Tracer {0:d}:\n    system evolved for {1:0.2e} Myr and did not merge prior to the sGRB...integration took {2:0.2f}s'.format(idx, time_evolved*u.s.to(u.Myr), (stop_time-start_time)))
+                        print('  Tracer {0:d}:\n    system evolved for {1:0.2e} and did not merge prior to the sGRB...integration took {2:0.2f}s'.format(idx, time_evolved, (stop_time-start_time)))
 
                 FINISHED_EVOLVING = True
                 break
@@ -650,19 +628,34 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
             if (time.time()-start_time) > Tint_max:
                 time_evolved = times[(tt+1)]-times[t0]
 
-                # set merger_redz to -1 to keep track of these
+                # set merger_redz to -1 to indicate that integration time has surpassed
                 merger_redz = -1
 
-                print('  Tracer {0:d}:\n    system evolved for {1:0.2e} Myr and longer than maximum integration time ({2:0.1f}s), integration terminated'.format(idx, time_evolved*u.s.to(u.Myr), Tint_max))
+                print('  Tracer {0:d}:\n    system evolved for {1:0.2e} and longer than maximum integration time ({2:0.1f}s), integration terminated'.format(idx, time_evolved, Tint_max))
 
                 FINISHED_EVOLVING=True
                 break
 
 
-            # append orbit information at this step, if save_traj==True
-            X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset = transform_orbits(copy.deepcopy(orb))
+            # --- If still in the loop, update and record information --- #
 
+            # --- track the amount of elapsed time
+            T_elapsed += dt
+
+            # --- append orbit information at this step, if save_traj==True
             if save_traj:
+                # transform orbital information back to physical units and calculate offsets
+                X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset = transform_orbits(copy.deepcopy(orb))
+                X = X.value
+                Y = Y.value
+                Z = Z.value
+                vX = vX.value
+                vY = vY.value
+                vZ = vZ.value
+                R_offset = R_offset.value
+                Rproj_offset = Rproj_offset.value
+                time_vals = (times[t0]+ts+T_elapsed).value
+
                 X_traj.append(X)
                 Y_traj.append(Y)
                 Z_traj.append(Z)
@@ -671,20 +664,30 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
                 vZ_traj.append(vZ)
                 R_offset_traj.append(R_offset)
                 Rproj_offset_traj.append(Rproj_offset)
-                if interp:
-                    int_times = times[t0]+utils.Tnat_to_cgs(T_elapsed+ts)
-                else:
-                    int_times = times[t0]+ts.value+T_elapsed
-                time_traj.append(int_times)
+                time_traj.append(time_vals)
+
 
             tt += 1
 
 
-    # once the system has either merged or integrated until the time of the sGRB, save trajectory information
+    # --- Once the system has either merged, integrated until the time of the sGRB, or hit wall time, record final trajectory information
+
+    # --- track the amount of elapsed time
+    T_elapsed += dt
+
     X,Y,Z,vX,vY,vZ,R_offset,Rproj_offset = transform_orbits(copy.deepcopy(orb))
+    X = X.value
+    Y = Y.value
+    Z = Z.value
+    vX = vX.value
+    vY = vY.value
+    vZ = vZ.value
+    R_offset = R_offset.value
+    Rproj_offset = Rproj_offset.value
+    time_vals = (times[t0]+ts+T_elapsed).value
 
     if VERBOSE:
-        print('    final offset: {0:0.2f} kpc (proj: {1:0.2f} kpc)\n'.format(R_offset[-1]*u.cm.to(u.kpc), Rproj_offset[-1]*u.cm.to(u.kpc)))
+        print('    final offset: {0:0.2f} (proj: {1:0.2f})\n'.format(R_offset[-1], Rproj_offset[-1]))
 
     # append orbit information at this step, if save_traj==True
     if save_traj:
@@ -696,11 +699,7 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
         vZ_traj.append(vZ)
         R_offset_traj.append(R_offset)
         Rproj_offset_traj.append(Rproj_offset)
-        if interp:
-            int_times = times[t0]+utils.Tnat_to_cgs(T_elapsed+ts)
-        else:
-            int_times = times[t0]+ts.value+T_elapsed
-        time_traj.append(int_times)
+        time_traj.append(time_vals)
 
         # flatten and save trajectories
         trajectories = pd.DataFrame()
@@ -713,13 +712,14 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
         trajectories['R_offset'] = [item for sublist in R_offset_traj for item in sublist]
         trajectories['Rproj_offset'] = [item for sublist in Rproj_offset_traj for item in sublist]
         trajectories['time'] = [item for sublist in time_traj for item in sublist]
+
+
         # if downsample is specified, apply here
         if downsample:
             trajectories = trajectories.iloc[::downsample, :]
 
         # save each trajectory separately, then combine at the end
         trajectories.to_hdf(outdir+'/trajectories_'+str(idx)+'.hdf', key='system', mode='a')
-
 
     # return the final values
     return X[-1],Y[-1],Z[-1],vX[-1],vY[-1],vZ[-1],R_offset[-1],Rproj_offset[-1],merger_redz
@@ -728,23 +728,22 @@ def integrate_orbits(system, t0, gal, int_method='odeint', Tinsp_lim=False, Tint
 
 
 def transform_orbits(orb):
-    """Takes in orbit, transforms to cartesian (cgs units), and calculates offsets/projected offsets.
+    """Takes in orbit, transforms to cartesian (physical units), and calculates offsets/projected offsets.
 
     By default, just returns the final values in cartesian coordinates, as well as the offset and projected offset. 
     """
-    # NOTE: galpy's code spits things out in natural units no matter what you input!!!
+    # NOTE: galpy's getOrbit() spits things out in natural units no matter what you input!!!
 
     Rs = orb.getOrbit()[:,0]
     vRs = orb.getOrbit()[:,1]
     vTs = orb.getOrbit()[:,2]
     Zs = orb.getOrbit()[:,3]
     vZs = orb.getOrbit()[:,4]
-    Phis = orb.getOrbit()[:,5] % (2*np.pi)
+    Phis = orb.getOrbit()[:,5]
 
-    # convert from natural to cgs units
-    # NOTE: THIS CHANGES THE INSTANCE ORBIT TO CGS TOO!!!
-    Rs, vRs, vTs, Zs, vZs, Phis = utils.orbit_nat_to_cgs(Rs, vRs, vTs, Zs, vZs, Phis)
-    vPhis = vTs / Rs
+    # convert from natural to cgs units (must be deep copy or else it changes the original orbit's instance as well)
+    Rs, vRs, vTs, Zs, vZs, Phis = utils.orbit_nat_to_phys(Rs, vRs, vTs, Zs, vZs, Phis)
+    vPhis = vTs / (Rs.to(u.km))
     R_offsets = np.sqrt(Rs**2 + Zs**2)
 
     # get positions and velocities in Cartesian coordinates
@@ -756,7 +755,7 @@ def transform_orbits(orb):
     rot_vecs = utils.euler_rot(rot_vecs, np.ones(len(vecs))*(2*np.pi*np.random.random()), axis='Y')
     rot_vecs = utils.euler_rot(rot_vecs, np.ones(len(vecs))*(2*np.pi*np.random.random()), axis='Z')
 
-    Rproj_offsets = np.sqrt(rot_vecs[:,0]**2 + rot_vecs[:,1]**2)
+    Rproj_offsets = np.sqrt(rot_vecs[:,0]**2 + rot_vecs[:,1]**2) * u.kpc
 
     return Xs,Ys,Zs,vXs,vYs,vZs,R_offsets,Rproj_offsets
 

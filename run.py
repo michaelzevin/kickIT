@@ -81,9 +81,8 @@ def parse_commandline():
 
     # integration arguments
     parser.add_argument('--int-method', type=str, default='odeint', help="Integration method for the orbits. Possible options are 'odeint' or 'leapfrog', until we get the C implementation working. Default is 'odeint'.")
-    parser.add_argument('--Tinsp-lim', action='store_true', help="Indicates whether the integrator should evolve only until the merger rather than all the way until the sGRB. Default=False.")
     parser.add_argument('--Tint-max', type=float, default=120.0, help="Amount of time to integrate before terminating, in seconds. Default is 120.0.")
-    parser.add_argument('--Nsteps-per-bin', type=int, default=1000, help="Number of timesteps per redshift bin in the integration. Default is 1000.")
+    parser.add_argument('--resolution', type=int, default=1000, help="Resolution of integration, specified by the number of timesteps per redshift bin in the integration. Default is 1000.")
     parser.add_argument('--save-traj', action='store_true',help="Indicates whether to save the full trajectories. Default=False")
     parser.add_argument('--downsample', type=int, default=None, help="Downsamples the trajectory data by taking every Nth line in the trajectories dataframe. Default=None.")
     
@@ -188,7 +187,6 @@ def main(args):
         sampled_parameters = sample.sample_Vsys_R(gal, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_birth=args.fixed_birth, fixed_potential=args.fixed_potential)
 
 
-
     # --- Initialize systems class
     systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props)
 
@@ -215,28 +213,21 @@ def main(args):
 
 
 
-
-
-
-
-
-
-    # --- kinematically evolve the tracer particles
-
+    # --- Kinematically evolve the tracer particles
     systems.evolve(gal, multiproc=args.multiproc, \
                         int_method=args.int_method, \
-                        Tinsp_lim=args.Tinsp_lim, \
                         Tint_max=args.Tint_max, \
-                        Nsteps_per_bin=args.Nsteps_per_bin, \
+                        resolution=args.resolution, \
                         save_traj=args.save_traj, \
                         downsample=args.downsample, \
                         outdir = args.output_dirpath, \
-                        fixed_potential = args.fixed_potential)
+                        fixed_potential = args.fixed_potential, \
+                        interpolants = interpolants)
 
 
 
     # --- write data to output file and finish
-    systems.write(args.output_dirpath, args.t0)
+    systems.write(args.output_dirpath)
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))

@@ -129,16 +129,17 @@ def inspiral_time_peters(a0,e0,m1,m2,af=0):
 def cartesian_to_cylindrical(x,y,z,vx,vy,vz):
     """
     Transforms positions and velocities from cartesian to cylindrical coordinates
+    Takes in Astropy units
     """
 
-    R = np.sqrt(x**2 + y**2)
-    vR = (x*vx + y*vy)/((x**2 + y**2)**(1./2))
+    R = np.sqrt(x**2 + y**2).to(u.kpc)
+    vR = ((x*vx + y*vy)/((x**2 + y**2)**(1./2))).to(u.km/u.s)
 
-    Phi = np.arctan(y/x)
-    vPhi = (x*vy - y*vx)/(x**2 + y**2)
+    Phi = np.arctan(y/x).to(u.rad)
+    vPhi = ((x*vy - y*vx)/(x**2 + y**2)).to(1/u.s)
 
-    Z = z
-    vZ = vz
+    Z = z.to(u.kpc)
+    vZ = vz.to(u.km/u.s)
 
     return R,Phi,Z,vR,vPhi,vZ
 
@@ -146,16 +147,17 @@ def cartesian_to_cylindrical(x,y,z,vx,vy,vz):
 def cylindrical_to_cartesian(R,Phi,Z,vR,vPhi,vZ):
     """
     Transforms positions and velocities from cylindrical to cartesian coordinates
+    Takes in Astropy units
     """
 
-    x = R*np.cos(Phi)
-    vx = vR*np.cos(Phi) - vR*np.sin(Phi)*vPhi
+    x = (R*np.cos(Phi)).to(u.kpc)
+    vx = (vR*np.cos(Phi) - R*np.sin(Phi)*vPhi).to(u.km/u.s)
 
-    y = R*np.sin(Phi)
-    vy = vR*np.sin(Phi) + vR*np.cos(Phi)*vPhi
+    y = (R*np.sin(Phi)).to(u.kpc)
+    vy = (vR*np.sin(Phi) + R*np.cos(Phi)*vPhi).to(u.km/u.s)
 
-    z = Z
-    vz = vZ
+    z = Z.to(u.kpc)
+    vz = vZ.to(u.km/u.s)
 
     return x,y,z,vx,vy,vz
     
@@ -224,11 +226,12 @@ def orbit_phys_to_nat(R, vR, vT, Z, vZ, Phi, ro=8*u.kpc, vo=220*u.km/u.s):
     """Converts orbital parameters from physical to natural units
     """
 
-    R /= ro
-    vR /= vo
-    vT /= vo
-    Z /= ro
-    vZ /= vo
+    R = R/ro
+    vR = vR/vo
+    vT = vT/vo
+    Z = Z/ro
+    vZ = vZ/vo
+    Phi = Phi
     
     return R.value, vR.value, vT.value, Z.value, vZ.value, Phi.value
 
@@ -237,11 +240,12 @@ def orbit_nat_to_phys(R, vR, vT, Z, vZ, Phi, ro=8*u.kpc, vo=220*u.km/u.s):
     """Converts orbital parameters from natural units to physical
     """
 
-    R *= ro
-    vR *= vo
-    vT *= vo
-    Z *= ro
-    vZ *= vo
+    R = R*ro
+    vR = vR*vo
+    vT = vT*vo
+    Z = Z*ro
+    vZ = vZ*vo
+    Phi = (Phi % (2*np.pi)) * u.rad
     
     return R, vR, vT, Z, vZ, Phi
 
