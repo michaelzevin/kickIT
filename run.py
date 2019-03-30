@@ -4,6 +4,7 @@
 import os
 import argparse
 import pdb
+import warnings
 import pickle
 
 import numpy as np
@@ -43,6 +44,7 @@ def parse_commandline():
     parser.add_argument('--output-dirpath', type=str, default='./output_files/', help="Path to the output hdf file. File has key names tracers. Default is './output_files/'.")
     parser.add_argument('--sgrb-path', type=str, default='./data/sgrb_hostprops_offsets.txt', help="Path to the table with sGRB host galaxy information. Default is './data/sgrb_hostprops_offsets.txt'.")
     parser.add_argument('--samples-path', type=str, default='./data/example_bns.dat', help="Path to the samples from population synthesis for generating the initial population of binaries. Default is './data/example_bns.dat'.")
+    parser.add_argument('--gal-path', type=str, default=None, help="Sets path to read in previously constructed galaxy realizzation. Default is 'None'.")
 
     # galaxy arguments
     parser.add_argument('--disk-profile', type=str, default='DoubleExponential', help="Profile for the galactic disk, named according to Galpy potentials. Default is 'DoubleExponential'.")
@@ -85,7 +87,7 @@ def parse_commandline():
     parser.add_argument('--resolution', type=int, default=1000, help="Resolution of integration, specified by the number of timesteps per redshift bin in the integration. Default is 1000.")
     parser.add_argument('--save-traj', action='store_true',help="Indicates whether to save the full trajectories. Default=False")
     parser.add_argument('--downsample', type=int, default=None, help="Downsamples the trajectory data by taking every Nth line in the trajectories dataframe. Default=None.")
-    
+
 
     args = parser.parse_args()
 
@@ -96,7 +98,7 @@ def parse_commandline():
 
 def main(args):
     """
-    Main function. 
+    Main function.
     """
     start = time.time()
 
@@ -119,21 +121,25 @@ def main(args):
                       }
 
 
-    # --- construct galaxy class
-    gal = galaxy_history.GalaxyHistory(\
-                        obs_props = obs_props,\
-                        disk_profile = args.disk_profile,\
-                        dm_profile = args.dm_profile,\
-                        smhm_relation = args.smhm_relation,\
-                        smhm_sigma = args.smhm_sigma,\
-                        bulge_profile = args.bulge_profile,\
-                        z_scale = args.z_scale,\
-                        differential_prof = args.differential_prof,\
-                        )
+    # --- Read in or construct galaxy class
+    if args.gal_path:
+        gal = pickle.load(open(args.gal_path, 'rb'))
+        print('Using galaxy realization living at {0:s}...\n'.format(args.gal_path))
+    else:
+        gal = galaxy_history.GalaxyHistory(\
+                            obs_props = obs_props,\
+                            disk_profile = args.disk_profile,\
+                            dm_profile = args.dm_profile,\
+                            smhm_relation = args.smhm_relation,\
+                            smhm_sigma = args.smhm_sigma,\
+                            bulge_profile = args.bulge_profile,\
+                            z_scale = args.z_scale,\
+                            differential_prof = args.differential_prof,\
+                            )
 
     # --- Save gal class
     gal.write(args.output_dirpath)
-    
+
 
     # --- Read in interpolants here, if specified
     interpolants = None
@@ -156,13 +162,13 @@ def main(args):
 
     # construct dict of params for sampling methods
     params_dict={
-        'Mcomp_mean':args.Mcomp_mean, 'Mcomp_sigma':args.Mcomp_sigma, 
-        'Mns_mean':args.Mns_mean, 'Mns_sigma':args.Mns_sigma, 
+        'Mcomp_mean':args.Mcomp_mean, 'Mcomp_sigma':args.Mcomp_sigma,
+        'Mns_mean':args.Mns_mean, 'Mns_sigma':args.Mns_sigma,
         'Mhe_mean':args.Mhe_mean, 'Mhe_sigma':args.Mhe_sigma, 'Mhe_max':args.Mhe_max,
         'Apre_mean':args.Apre_mean, 'Apre_sigma':args.Apre_sigma, 'Apre_min':args.Apre_min, 'Apre_max':args.Apre_max,
         'Vkick_sigma':args.Vkick_sigma, 'Vkick_min':args.Vkick_min, 'Vkick_max':args.Vkick_max,
         'R_mean':args.R_mean}
-    
+
     # FIXME: maybe should move the population sampling to another function?
     # --- if fully sampling progenitor parameters...
     if args.sample_progenitor_props:
@@ -183,7 +189,7 @@ def main(args):
     # --- otherwise we sample in only Vsys and Tinsp
     else:
         print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
-        
+
         sampled_parameters = sample.sample_Vsys_R(gal, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_birth=args.fixed_birth, fixed_potential=args.fixed_potential)
 
 
