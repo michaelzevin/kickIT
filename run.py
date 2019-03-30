@@ -2,9 +2,9 @@
 
 # ---- Import standard modules to the python path.
 import os
-import pdb
 import argparse
 import pdb
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -32,19 +32,14 @@ def parse_commandline():
     parser.add_argument('-V', '--version', action='version', version=__version__)
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-g', '--grb', type=str, help="GRB for which we want to perform analysis.")
-    parser.add_argument('-i', '--t0', type=int, default=0, help="Timestep that the tracer particles are initiated at. Note that this is an integer timestep, which will be used to choose the physical time in the gal.times array. Default is the first timestep (0).")
     parser.add_argument('-N', '--Nsys', type=int, default=1, help="Number of systems you wish to run for this particular starting time. Default is 1.")
     parser.add_argument('-mp', '--multiproc', type=str, default=None, help="If specified, will parallelize over the number of cores provided as an argument. Can also use the string 'max' to parallelize over all available cores. Default is None.")
+    parser.add_argument('--fixed-birth', type=int, default=None, help="Fixes the birth time of the progenitor system by specifying a timestep (t0). Default=None.")
+    parser.add_argument('--fixed-potential', type=int, default=None, help="Fixes the galactic potential to the potential of the galaxy at the timestep t0. Also samples the location of the system according to this galactic model. Default=None.")
 
-    # defining grid properties
-    parser.add_argument('-T', '--Tsteps', type=int, default=100, help="Number of discrete time (redshift) bins to evolve systems in. Default is 100.")
-    parser.add_argument('-rg', '--Rgrid', type=int, default=500, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
-    parser.add_argument('-zg', '--Zgrid', type=int, default=300, help="Number of gridpoints for the Z-component of the interpolation model. Default is 50.") 
-    parser.add_argument('--Rgrid-max', type=float, default=1e3, help="Maximum R value for interpolated potentials. Default is 1e3.")
-    parser.add_argument('--Zgrid-max', type=float, default=1e2, help="Maximum Z value for interpolated potentials. Default is 1e2.")
 
     # paths to data files
-    parser.add_argument('--interp-dirpath', type=str, help="Path to the directory that holds interpolation files. Default is None.")
+    parser.add_argument('--interp-path', type=str, default=None, help="Path to the potential interpolation file you wish to use. Default is None.")
     parser.add_argument('--output-dirpath', type=str, default='./output_files/', help="Path to the output hdf file. File has key names tracers. Default is './output_files/'.")
     parser.add_argument('--sgrb-path', type=str, default='./data/sgrb_hostprops_offsets.txt', help="Path to the table with sGRB host galaxy information. Default is './data/sgrb_hostprops_offsets.txt'.")
     parser.add_argument('--samples-path', type=str, default='./data/example_bns.dat', help="Path to the samples from population synthesis for generating the initial population of binaries. Default is './data/example_bns.dat'.")
@@ -54,7 +49,9 @@ def parse_commandline():
     parser.add_argument('--bulge-profile', type=str, default=None, help="Profile for the galactic bulge, named according to Galpy potentials. Default is None.")
     parser.add_argument('--dm-profile', type=str, default='NFW', help="Profile for the DM, named according to Galpy potentials. Default is NFW.")
     parser.add_argument('--z-scale', type=float, default=0.05, help="Fraction of the galactic scale radius for the scale height above/below the disk. Default=0.05.")
-    parser.add_argument('--fixed-potential', action='store_true', help="Fixes the galactic potential to the potential of the galaxy at the time of the sGRB. Also samples the location of the system according to this galactic model. Default=False.")
+    parser.add_argument('--differential-prof', action='store_true', help="Uses a differential stellar profile, creating a unique galpy potential at each timestep according to the updated scale radius and accumulated mass. Default=False.")
+    parser.add_argument('--smhm-relation', type=str, default='Guo', help="Chooses a stellar mass-halo mass relation. Current options are from Guo+2010 and Moster+2012. If Moster is provided, can also supply a sigma value. Default is 'Guo'.")
+    parser.add_argument('--smhm-sigma', type=float, default=0.0, help="Deviation from the stellar mass-halo mass relation in Moster+2012. Can supply either positive or negative values. Default is 0.0.")
 
     # sampling arguments
     parser.add_argument('--sample-progenitor-props', action='store_true',help="Indicates whether to use specific sampling for the progenitor properties defined in sample.py (i.e., fro pop synth). If not specified, a grid in *only* R (based on the SF profile) and Vsys (with random initial direction for Vsys) will be used for initializing the particles. Default=False.")
@@ -84,9 +81,8 @@ def parse_commandline():
 
     # integration arguments
     parser.add_argument('--int-method', type=str, default='odeint', help="Integration method for the orbits. Possible options are 'odeint' or 'leapfrog', until we get the C implementation working. Default is 'odeint'.")
-    parser.add_argument('--Tinsp-lim', action='store_true', help="Indicates whether the integrator should evolve only until the merger rather than all the way until the sGRB. Default=False.")
     parser.add_argument('--Tint-max', type=float, default=120.0, help="Amount of time to integrate before terminating, in seconds. Default is 120.0.")
-    parser.add_argument('--Nsteps-per-bin', type=int, default=1000, help="Number of timesteps per redshift bin in the integration. Default is 1000.")
+    parser.add_argument('--resolution', type=int, default=1000, help="Resolution of integration, specified by the number of timesteps per redshift bin in the integration. Default is 1000.")
     parser.add_argument('--save-traj', action='store_true',help="Indicates whether to save the full trajectories. Default=False")
     parser.add_argument('--downsample', type=int, default=None, help="Downsamples the trajectory data by taking every Nth line in the trajectories dataframe. Default=None.")
     
@@ -104,45 +100,59 @@ def main(args):
     """
     start = time.time()
 
-    # construct pertinent directories
-    if not os.path.exists(args.interp_dirpath):
-        os.makedirs(args.interp_dirpath)
+    # --- construct pertinent directories
     if not os.path.exists(args.output_dirpath):
         os.makedirs(args.output_dirpath)
 
-    # read sgrb hostprops table as pandas dataframe
+    # --- read sgrb hostprops table as pandas dataframe, parse observed props
     sgrb_host_properties = pd.read_table(args.sgrb_path, delim_whitespace=True, na_values='-')
-    grb_props = sgrb_host_properties.loc[sgrb_host_properties['GRB'] == args.grb]
+    gal_info = sgrb_host_properties.loc[sgrb_host_properties['GRB'] == args.grb].iloc[0]
+    obs_props = {'name':gal_info['GRB'],\
+                      'pcc':gal_info['Pcc'],\
+                      'mass_stars':10**gal_info['log(M*)']*u.Msun,\
+                      'redz':gal_info['z'],\
+                      'age_stars':gal_info['PopAge']*u.Gyr,\
+                      'rad_eff':gal_info['r_e']*u.kpc,\
+                      'rad_offset':gal_info['deltaR']*u.kpc,\
+                      'rad_offset_error':gal_info['deltaR_err']*u.kpc,\
+                      'gal_sfr':gal_info['SFR']*u.Msun/u.yr
+                      }
 
-    # get galaxy information
+
+    # --- construct galaxy class
     gal = galaxy_history.GalaxyHistory(\
-                        obs_mass_stars = float(10**grb_props['log(M*)'] * u.Msun.to(u.g)),\
-                        obs_redz = float(grb_props['z']),\
-                        obs_age_stars = float(grb_props['PopAge'] * u.Gyr.to(u.s)),\
-                        obs_rad_eff = float(grb_props['r_e'] * u.kpc.to(u.cm)),\
-                        obs_rad_offset = float(grb_props['deltaR'] * u.kpc.to(u.cm)),\
-                        obs_rad_offset_error = float(grb_props['deltaR_err'] * u.kpc.to(u.cm)),\
-                        obs_gal_sfr = float(grb_props['SFR'] * (u.Msun.to(u.g))/u.yr.to(u.s)),\
+                        obs_props = obs_props,\
                         disk_profile = args.disk_profile,\
-                        bulge_profile = args.bulge_profile,\
                         dm_profile = args.dm_profile,\
+                        smhm_relation = args.smhm_relation,\
+                        smhm_sigma = args.smhm_sigma,\
+                        bulge_profile = args.bulge_profile,\
                         z_scale = args.z_scale,\
-                        interp_dirpath = args.interp_dirpath,\
-                        Tsteps = args.Tsteps,\
-                        Rgrid = args.Rgrid,\
-                        Zgrid = args.Zgrid,\
-                        Rgrid_max = args.Rgrid_max,\
-                        Zgrid_max = args.Zgrid_max,\
-                        name = grb_props['GRB'].item(),\
-                        multiproc = args.multiproc,\
-                        verbose = args.verbose)
+                        differential_prof = args.differential_prof,\
+                        )
 
-    # make sure the timestep isn't larger than the number of redshift bins (note that the last redshift value has no bin)
-    if args.t0 >= (len(gal.redz)-1):
-        raise ValueError("Timestep index {0:d} is greater than the number of non-zero redshift bins ({1:d})".format(args.t0, (len(gal.redz)-1)))
+    # --- Save gal class
+    gal.write(args.output_dirpath)
+    
 
-    print('Redshift at which particles are initiated: z={0:0.2f}\n'.format(gal.redz[args.t0]))
+    # --- Read in interpolants here, if specified
+    interpolants = None
+    if args.interp_path:
+        interpolants = pickle.load(open(args.interp_path, 'rb'))
+        print('Using galactic potential interpolations living at {0:s}...\n'.format(args.interp_path))
 
+        # Check that the interpolants have the same number of timesteps
+        if len(interpolants) != len(gal.times):
+            raise ValueError('The interpolation file you specified does not have the same parameters as your galaxy model! It has {0:d} timesteps whereas you galaxy has {1:d}!'.format(len(interpolants), len(gal.times)))
+
+    else:
+        if args.differential_prof==True:
+            warnings.warn("If you're using differential stellar profiles, you might want to be using an interpolated potential instance to speed up the integrations!!!\n")
+
+
+
+
+    # --- sample progenitor parameters
 
     # construct dict of params for sampling methods
     params_dict={
@@ -153,10 +163,11 @@ def main(args):
         'Vkick_sigma':args.Vkick_sigma, 'Vkick_min':args.Vkick_min, 'Vkick_max':args.Vkick_max,
         'R_mean':args.R_mean}
     
-    ### if we want to specifically sample the progenitor properties rather than just R and Vsys...
+    # FIXME: maybe should move the population sampling to another function?
+    # --- if fully sampling progenitor parameters...
     if args.sample_progenitor_props:
-        # sample system parameters
-        sampled_parameters = sample.sample_parameters(gal, t0=args.t0, Nsys=args.Nsys, \
+        print('Fully sampling system parameters, determining systemic velocities and inspiral times...\n')
+        sampled_parameters = sample.sample_parameters(gal, Nsys=args.Nsys, \
                                 Mcomp_method=args.Mcomp_method, \
                                 Mns_method=args.Mns_method, \
                                 Mhe_method=args.Mhe_method, \
@@ -166,52 +177,57 @@ def main(args):
                                 R_method=args.R_method, \
                                 params_dict = params_dict, \
                                 samples = args.samples_path, \
-                                fixed_potential = args.fixed_potential, \
-                                verbose = args.verbose)
-        systems = system.Systems(args.t0, sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
+                                fixed_birth = args.fixed_birth, \
+                                fixed_potential = args.fixed_potential)
+
+    # --- otherwise we sample in only Vsys and Tinsp
+    else:
+        print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
+        
+        sampled_parameters = sample.sample_Vsys_R(gal, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_birth=args.fixed_birth, fixed_potential=args.fixed_potential)
+
+
+    # --- Initialize systems class
+    systems = system.Systems(sampled_parameters, sample_progenitor_props=args.sample_progenitor_props)
+
+    # --- Calculate the instantaneous particle escape velocities and galactic velocities at birth
+    systems.escape_velocity(gal, interpolants)
+    systems.galactic_velocity(gal, interpolants, args.fixed_potential)
+
+    # --- If we sampled the porgenitor properties, we need to determine the impact of the SN and the inspiral time, and bring the system into the galactic frame
+    if args.sample_progenitor_props:
         # implement the supernova
         systems.SN()
         # check if the systems survived the supernova, and return survival fraction
         survival_fraction = systems.check_survival()
-        # calculate the instantaneous particle escape velocities
-        systems.escape_velocity(gal, args.t0)
-        # calculate the pre-SN galactic velocity
-        systems.galactic_velocity(gal, args.t0, args.fixed_potential)
-        # transform the systemic velocity into the galactic frame and add pre-SN velocity
-        systems.galactic_frame()
         # calculate the inspiral time for systems that survived
         tH_inspiral_fraction = systems.inspiral_time()
+        # transform the systemic velocity into the galactic frame and add pre-SN velocity
+        systems.galactic_frame()
 
 
-    ### otherwise, we'll just sample R and Vsys
+    # --- Otherwise, we just decompose the Vsys array according to SYStheta nad SYSphi
     else:
-        print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
-        
-        sampled_parameters = sample.sample_Vsys_R(gal, t0=args.t0, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_potential=args.fixed_potential, verbose=args.verbose)
-        # initialize system class
-        systems = system.Systems(args.t0, sampled_parameters, sample_progenitor_props=args.sample_progenitor_props, verbose=args.verbose)
-        # calculate the instantaneous particle escape velocities
-        systems.escape_velocity(gal, args.t0)
-        # calculate the pre-SN galactic velocity
-        systems.galactic_velocity(gal, args.t0, args.fixed_potential)
-        # project systemic velocity into galactic coordinates... FIXME
+        # project systemic velocity into galactic coordinates
         systems.decompose_Vsys()
 
 
-    # do evolution of each tracer particle
-    systems.evolve(gal, args.t0, multiproc=args.multiproc, \
+
+    # --- Kinematically evolve the tracer particles
+    systems.evolve(gal, multiproc=args.multiproc, \
                         int_method=args.int_method, \
-                        Tinsp_lim=args.Tinsp_lim, \
                         Tint_max=args.Tint_max, \
-                        Nsteps_per_bin=args.Nsteps_per_bin, \
+                        resolution=args.resolution, \
                         save_traj=args.save_traj, \
                         downsample=args.downsample, \
                         outdir = args.output_dirpath, \
-                        fixed_potential = args.fixed_potential)
+                        fixed_potential = args.fixed_potential, \
+                        interpolants = interpolants)
 
-    # write data to output file
-    systems.write(args.output_dirpath, args.t0)
-    gal.write(args.output_dirpath)
+
+
+    # --- write data to output file and finish
+    systems.write(args.output_dirpath)
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))
