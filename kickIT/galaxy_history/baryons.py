@@ -2,8 +2,15 @@
 """
 
 import numpy as np
+import astropy as ap
+from . import utils
 
-from . import utils, MSOL, KPC
+MSOL = ap.constants.M_sun.cgs.value    # gram
+PC = ap.units.pc.to(ap.units.cm)       # cm
+YR = 365.2425*24*3600                  # sec
+
+KPC = 1e3 * PC    # cm
+GYR = 1e9 * YR    # yr
 
 
 class GUO_0909_4305:
@@ -51,13 +58,18 @@ def sfr_rad_dist(rads, mstar, scaling=1.0):
     rs = sfr_disk_rad(mstar, scaling)
 
     # Density of star-formation distribution
-    sfr_dens = np.exp(-rads/rs)
+    if rs>0:
+        sfr_dens = np.exp(-rads/rs)
+    else:
+        sfr_dens = np.zeros(rads.shape)
+
     # Area of each disk-section
     area = utils.annulus_areas(rads)
-
     sfr = sfr_dens * area
+
     # Normalize
-    sfr /= np.sum(sfr)
+    if np.sum(sfr)>0:
+        sfr /= np.sum(sfr)
 
     return sfr, rs
 
@@ -70,8 +82,11 @@ def sfr_main_seq(mass, redz, cosmo):
     time = cosmo.age(redz).to('Gyr').value
     sfr_amp = -(6.51 - 0.11*time)      # Msol/yr
     gamma = 0.84 - 0.026*time
-    sfr = gamma * np.log10(mass) + sfr_amp
-    sfr = 10**sfr
+    if mass==0:
+        sfr = 0.0
+    else:
+        sfr = gamma * np.log10(mass) + sfr_amp
+        sfr = 10**sfr
     return sfr
 
 
@@ -80,8 +95,12 @@ def gas_mass_from_stellar_mass(mstar):
 
     See: Peeples+2014 [1310.2253], Eq.9
     """
-    gas_frac = -0.48 * np.log10(mstar/MSOL) + 4.39
-    mgas = mstar * np.power(10.0, gas_frac)
+    mgas = np.zeros_like(mstar)
+    gas_frac = np.zeros_like(mstar)
+    pos_vals = [mstar!=0]
+
+    gas_frac[pos_vals] = -0.48 * np.log10(mstar[pos_vals]/MSOL) + 4.39
+    mgas[pos_vals] = mstar[pos_vals] * np.power(10.0, gas_frac[pos_vals])
     return mgas
 
 
