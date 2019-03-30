@@ -433,7 +433,7 @@ class Systems:
         self.merger_redz = np.asarray(merger_redzs)*u.dimensionless_unscaled
         self.R_offset = np.asarray(R_offsets)*u.kpc
         self.Rproj_offset = np.asarray(Rproj_offsets)*u.kpc
-        self.X = np.asarray(X)*u.kpc
+        self.X = np.asarray(Xs)*u.kpc
         self.Y = np.asarray(Ys)*u.kpc
         self.Z = np.asarray(Zs)*u.kpc
         self.vX = np.asarray(vXs)*u.km/u.s
@@ -517,13 +517,10 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
     # initialize cosmology
     cosmo = gal.cosmo
 
-    INSP_FLAG=False
-    MERGED=False
     FINISHED_EVOLVING=False
-
     while FINISHED_EVOLVING==False:
 
-        # first, check that the system survived ther supernova
+        # first, check that the system survived the supernova
         if SNsurvive == False:
             # write in NaNs here for merger_redz
             merger_redz = np.nan
@@ -583,11 +580,11 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
                 age = times[t0]+Tinsp
                 merger_redz = float(cosmo.tage_to_z(age.to(u.s)))
 
-                FINISHED_EVOLVING = True
                 stop_time = time.time()
 
                 if VERBOSE:
                     print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}...integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
+                FINISHED_EVOLVING = True
                 break
 
 
@@ -610,15 +607,11 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
 
                 stop_time = time.time()
 
-                if MERGED:
-                    if VERBOSE:
-                        print('  Tracer {0:d}:\n    merger occurred at z={1:0.2f}...integration took {2:0.2f}s'.format(idx, merger_redz, (stop_time-start_time)))
+                # set merger_redz to 0 to indicate that it did not merge
+                merger_redz = 0
 
-                else:
-                    # set merger_redz to 0 to indicate that it did not merge
-                    merger_redz = 0
-                    if VERBOSE:
-                        print('  Tracer {0:d}:\n    system evolved for {1:0.2e} and did not merge prior to the sGRB...integration took {2:0.2f}s'.format(idx, time_evolved, (stop_time-start_time)))
+                if VERBOSE:
+                    print('  Tracer {0:d}:\n    system evolved for {1:0.2e} and did not merge prior to the sGRB...integration took {2:0.2f}s'.format(idx, time_evolved, (stop_time-start_time)))
 
                 FINISHED_EVOLVING = True
                 break
