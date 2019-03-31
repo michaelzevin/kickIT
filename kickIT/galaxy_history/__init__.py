@@ -86,7 +86,7 @@ class GalaxyHistory:
         self.calc_mass_profiles_vs_time()
 
         # Calculate the SFR weights at each timestep
-        self.sfr_weights = (self.gal_sfr / np.sum(self.gal_sfr)).value
+        self.calc_sfr_weights()
 
         # Calculate galactic potentials vs time
         self.calc_potentials_vs_time(self.differential_prof)
@@ -237,6 +237,24 @@ class GalaxyHistory:
         self.Rscale_dm = Rscale_dm * u.kpc
         
         return
+
+
+    def calc_sfr_weights(self):
+        """Calculate the SFR weighting used to smaple t0.
+
+        The first step with postive SFR is set to 0, since there is no mass profile at this time.
+        """
+
+        # --- teporarily set sfr to 0 where there is no mass
+        nomass_idxs = np.argwhere(gal.mstar == 0)
+        sfr_tmp = self.gal_sfr
+        sfr_tmp[nomass_idxs] = 0
+
+        # --- calculate the weights
+        self.sfr_weights = (sfr_tmp / np.sum(sfr_tmp)).value
+
+        return
+
 
 
     def calc_potentials_vs_time(self, differential=False, method='astropy'):
