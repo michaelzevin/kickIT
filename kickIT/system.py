@@ -381,8 +381,14 @@ class Systems:
         func = partial(integrate_orbits, gal=gal, int_method=int_method, Tint_max=Tint_max, resolution=resolution, save_traj=save_traj, downsample=downsample, outdir=outdir, fixed_potential=fixed_potential, interpolants=interpolants)
 
 
-        # --- CALL THE INTEGRATION FUNCTION AND EVOLVE --- #
+        # --- if save_traj==True, write the temporary trajectories directory
+        columns = ['X','Y','Z','vX','vY','vZ','R_offset','Rproj_offset','time','idx']
+        trajectories = pd.DataFrame(columns=columns)
+        trajectories.to_csv(outdir+'/trajectories.tmp', index=False)
 
+
+
+        # --- CALL THE INTEGRATION FUNCTION AND EVOLVE --- #
 
         # --- enable multiprocessing, if specifed
         if multiproc:
@@ -706,7 +712,7 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
             trajectories = trajectories.iloc[::downsample, :]
 
         # save each trajectory separately, then combine at the end
-        trajectories.to_csv(outdir+'/trajectories.tmp', index=False, mode='a')
+        trajectories.to_csv(outdir+'/trajectories.tmp', index=False, header=False, mode='a')
 
     # return the final values
     return X[-1],Y[-1],Z[-1],vX[-1],vY[-1],vZ[-1],R_offset[-1],Rproj_offset[-1],merger_redz
