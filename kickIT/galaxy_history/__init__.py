@@ -246,7 +246,7 @@ class GalaxyHistory:
         """
 
         # --- teporarily set sfr to 0 where there is no mass
-        nomass_idxs = np.argwhere(gal.mstar == 0)
+        nomass_idxs = np.argwhere(self.mass_stars == 0)
         sfr_tmp = self.gal_sfr
         sfr_tmp[nomass_idxs] = 0
 

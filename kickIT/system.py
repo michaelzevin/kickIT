@@ -443,29 +443,20 @@ class Systems:
         # combine the trajectories into a single hdf5 file, if save_traj==True
         print('Combining trajectory files into single hdf5 file...\n')
         if save_traj==True:
-            trajectories = pd.DataFrame()
-            for f in os.listdir(outdir):
-                if 'trajectories_' in f:
-                    temp = pd.read_hdf(outdir+'/'+f, key='system')
-                    _, idx = f.split('_')
-                    idx, _ = idx.split('.')
-                    temp['idx'] = idx
-                    trajectories = trajectories.append(temp)
-                    os.remove(outdir+'/'+f)
-
+            trajectories = pd.read_csv(outdir+'/trajectories.tmp')
             trajectories.to_hdf(outdir+'/output.hdf', key='trajectories')
+            os.remove(outdir+'/trajectories.tmp')
 
         return
 
-            
+
 
 
     def write(self, outdir):
-        """Write data as hdf file to specified outpath.
-        Each key represents a timestep at which the particles are initialed in the galaxy model.
+        """Write tracer data as hdf file to specified outpath.
         """
 
-        print("Writing systems data in directory '{0:s}'...\n".format(outdir))
+        print("Writing tracer data in directory '{0:s}'...\n".format(outdir))
 
         tracers = pd.DataFrame()
         for attr, values in self.__dict__.items():
@@ -473,8 +464,10 @@ class Systems:
                 tracers[attr] = values
 
         tracers.to_hdf(outdir+'/output.hdf', key='tracers', mode='a')
-            
+
         return
+
+
 
 
 
@@ -705,6 +698,7 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
         trajectories['R_offset'] = [item for sublist in R_offset_traj for item in sublist]
         trajectories['Rproj_offset'] = [item for sublist in Rproj_offset_traj for item in sublist]
         trajectories['time'] = [item for sublist in time_traj for item in sublist]
+        trajectories['idx'] = idx
 
 
         # if downsample is specified, apply here
@@ -712,7 +706,7 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
             trajectories = trajectories.iloc[::downsample, :]
 
         # save each trajectory separately, then combine at the end
-        trajectories.to_hdf(outdir+'/trajectories_'+str(idx)+'.hdf', key='system', mode='a')
+        trajectories.to_csv(outdir+'/trajectories.tmp', index=False, mode='a')
 
     # return the final values
     return X[-1],Y[-1],Z[-1],vX[-1],vY[-1],vZ[-1],R_offset[-1],Rproj_offset[-1],merger_redz
