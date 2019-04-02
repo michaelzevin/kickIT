@@ -382,7 +382,7 @@ class Systems:
 
 
         # --- if save_traj==True, write the temporary trajectories directory
-        columns = ['X','Y','Z','vX','vY','vZ','R_offset','Rproj_offset','time','idx']
+        columns = ['idx','X','Y','Z','vX','vY','vZ','R_offset','Rproj_offset','time']
         trajectories = pd.DataFrame(columns=columns)
         trajectories.to_csv(outdir+'/trajectories.tmp', index=False)
 
@@ -449,7 +449,7 @@ class Systems:
         # combine the trajectories into a single hdf5 file, if save_traj==True
         print('Combining trajectory files into single hdf5 file...\n')
         if save_traj==True:
-            trajectories = pd.read_csv(outdir+'/trajectories.tmp')
+            trajectories = pd.read_csv(outdir+'/trajectories.tmp', index_col='idx')
             trajectories.to_hdf(outdir+'/output.hdf', key='trajectories')
             os.remove(outdir+'/trajectories.tmp')
 
@@ -468,6 +468,7 @@ class Systems:
         for attr, values in self.__dict__.items():
             if attr not in ['Nsys']:
                 tracers[attr] = values
+        tracers.index.name = 'idx'
 
         tracers.to_hdf(outdir+'/output.hdf', key='tracers', mode='a')
 
@@ -705,6 +706,7 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
         trajectories['Rproj_offset'] = [item for sublist in Rproj_offset_traj for item in sublist]
         trajectories['time'] = [item for sublist in time_traj for item in sublist]
         trajectories['idx'] = idx
+        trajectories.set_index('idx', inplace=True)
 
 
         # if downsample is specified, apply here
@@ -712,7 +714,7 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
             trajectories = trajectories.iloc[::downsample, :]
 
         # save each trajectory separately, then combine at the end
-        trajectories.to_csv(outdir+'/trajectories.tmp', index=False, header=False, mode='a')
+        trajectories.to_csv(outdir+'/trajectories.tmp', index=True, header=False, mode='a')
 
     # return the final values
     return X[-1],Y[-1],Z[-1],vX[-1],vY[-1],vZ[-1],R_offset[-1],Rproj_offset[-1],merger_redz
