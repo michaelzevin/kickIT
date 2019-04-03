@@ -145,7 +145,7 @@ class GalaxyHistory:
             mass_stars[ii] = mstar - dm
             ii -= 1
         self.mass_stars = mass_stars
-        self.gal_sfr = gal_sfr
+        self.sfr = gal_sfr
 
         # Initialize gas and DM arrays
         mass_gas = np.zeros_like(self.mass_stars)
@@ -191,7 +191,7 @@ class GalaxyHistory:
         # --- Iterate over each time-step until when the sgrb occurred
         for ii, zz in enumerate(self.redz):
 
-            sfr = self.gal_sfr[ii]
+            sfr = self.sfr[ii]
             mstar = self.mass_stars[ii]
             mgas = self.mass_gas[ii]
             mdm = self.mass_dm[ii]
@@ -240,18 +240,25 @@ class GalaxyHistory:
 
 
     def calc_sfr_weights(self):
-        """Calculate the SFR weighting used to smaple t0.
+        """Calculate the SFR weighting used to sample t0.
 
         The first step with postive SFR is set to 0, since there is no mass profile at this time.
         """
 
+        # FIXME this is not matching up with the galaxy's population age!!!
+        # --- calculate the dts for the SF weight calculation, setting last step to 0
+        dts = (self.times[1:]-self.times[:-1]).value
+        dts = np.append(dts, 0.0) * u.Gyr
+
         # --- teporarily set sfr to 0 where there is no mass
         nomass_idxs = np.argwhere(self.mass_stars == 0)
-        sfr_tmp = self.gal_sfr
-        sfr_tmp[nomass_idxs] = 0
+
+        # --- find the change in masses at this step
+        dms = self.sfr * (dts.to(u.yr))
+        dms[nomass_idxs] = 0
 
         # --- calculate the weights
-        self.sfr_weights = (sfr_tmp / np.sum(sfr_tmp)).value
+        self.sfr_weights = (dms / np.sum(dms)).value
 
         return
 

@@ -233,7 +233,7 @@ def main(args):
 
 
     # --- write data to output file and finish
-    systems.write(args.output_dirpath)
+    systems.write(gal, args.output_dirpath)
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))

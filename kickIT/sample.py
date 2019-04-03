@@ -403,14 +403,13 @@ def sample_Vsys_R(gal, Nsys=1, Vsys_range=(0,1000), R_method='sfr', fixed_birth=
     bin_params['t0'] = sample_t0(Nsys, gal, fixed_birth=fixed_birth)
     # sample R
     bin_params['R'] = sample_R(Nsys, gal, bin_params['t0'], method=R_method, fixed_potential=fixed_potential)
-    # fix Tinsp and SNsurvive
-    bin_params['Tinsp'] = 14.0 * u.Gyr
+    # fix SNsurvive and Tinsp (we'll change Tinsp after the integration)
     bin_params['SNsurvive'] = True
+    bin_params['Tinsp'] = 14*u.Gyr
 
     # --- write the birth time and birth redshift
     bin_params['tbirth'] = gal.times[bin_params['t0']]
     bin_params['zbirth'] = gal.redz[bin_params['t0']]
-
 
     return bin_params
 

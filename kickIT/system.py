@@ -458,11 +458,14 @@ class Systems:
 
 
 
-    def write(self, outdir):
+    def write(self, gal, outdir):
         """Write tracer data as hdf file to specified outpath.
         """
 
         print("Writing tracer data in directory '{0:s}'...\n".format(outdir))
+
+        # --- write the inspiral time as the time difference between tbirth and tsGRB
+        self.Tinsp = gal.times[-1] - self.tbirth
 
         tracers = pd.DataFrame()
         for attr, values in self.__dict__.items():
