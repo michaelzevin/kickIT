@@ -29,7 +29,7 @@ def sample_parameters(gal, Nsys=1, Mcomp_method='gaussian', Mns_method='gaussian
     if 'popsynth' in (Mcomp_method, Mns_method, Mhe_method, Apre_method, epre_method, Vkick_method, R_method):
         if samples is None:
             raise NameError("No popsynth samples were provided!")
-        popsynth_data = pd.read_csv(samples, sep=' ')
+        popsynth_data = pd.read_csv(samples, index_col='idx')
         popsynth_data = popsynth_data.sample(Nsys, replace=True)
     else:
         popsynth_data = None
