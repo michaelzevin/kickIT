@@ -241,8 +241,9 @@ def stellar_mass_to_halo_mass(mstar, relation='Guo', redz=None, sigma=None):
         raise NameError('Stellar mass-Halo mass relation {0:s} not recognized!'.format(relation))
 
     mhalo = np.zeros_like(mstar)
-    pos_vals = [mstar!=0]
+    pos_vals = mstar!=0
 
+    import pdb; pdb.set_trace()
     if relation == 'Guo':
         mhalo[pos_vals] = lin_interp(np.log10(mstar[pos_vals]))
         mhalo[pos_vals] = np.power(10.0, mhalo[pos_vals])

@@ -97,7 +97,7 @@ def gas_mass_from_stellar_mass(mstar):
     """
     mgas = np.zeros_like(mstar)
     gas_frac = np.zeros_like(mstar)
-    pos_vals = [mstar!=0]
+    pos_vals = mstar!=0
 
     gas_frac[pos_vals] = -0.48 * np.log10(mstar[pos_vals]/MSOL) + 4.39
     mgas[pos_vals] = mstar[pos_vals] * np.power(10.0, gas_frac[pos_vals])
