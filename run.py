@@ -37,6 +37,7 @@ def parse_commandline():
     parser.add_argument('-mp', '--multiproc', type=str, default=None, help="If specified, will parallelize over the number of cores provided as an argument. Can also use the string 'max' to parallelize over all available cores. Default is None.")
     parser.add_argument('--fixed-birth', type=int, default=None, help="Fixes the birth time of the progenitor system by specifying a timestep (t0). Default=None.")
     parser.add_argument('--fixed-potential', type=int, default=None, help="Fixes the galactic potential to the potential of the galaxy at the timestep t0. Also samples the location of the system according to this galactic model. Default=None.")
+    parser.add_argument('--gal-only', action='store_true', help="If true, will stop the code after constructing the galaxy model. Useful for prepping galaxy models for interpolation. Default=False.")
 
 
     # paths to data files
@@ -45,6 +46,7 @@ def parse_commandline():
     parser.add_argument('--samples-path', type=str, default=None, help="Path to the samples from population synthesis for generating the initial population of binaries. Default is None.")
     parser.add_argument('--interp-path', type=str, default=None, help="Path to the potential interpolation file you wish to use. Default is None.")
     parser.add_argument('--gal-path', type=str, default=None, help="Sets path to read in previously constructed galaxy realizzation. Default is 'None'.")
+    parser.add_argument('--label', type=str, default=None, help="Provide user-defined label for naming galaxy and output files. Default is 'None'.")
 
     # galaxy arguments
     parser.add_argument('--disk-profile', type=str, default='DoubleExponential', help="Profile for the galactic disk, named according to Galpy potentials. Default is 'DoubleExponential'.")
@@ -138,7 +140,9 @@ def main(args):
                             )
 
     # --- Save gal class
-    gal.write(args.output_dirpath)
+    gal.write(args.output_dirpath, args.label)
+    if args.gal_only:
+        return
 
 
     # --- Read in interpolants here, if specified
@@ -228,12 +232,13 @@ def main(args):
                         downsample=args.downsample, \
                         outdir = args.output_dirpath, \
                         fixed_potential = args.fixed_potential, \
-                        interpolants = interpolants)
+                        interpolants = interpolants, \
+                        label = args.label)
 
 
 
     # --- write data to output file and finish
-    systems.write(gal, args.output_dirpath)
+    systems.write(gal, args.output_dirpath, args.label)
 
     end = time.time()
     print('{0:0.2} s'.format(end-start))

@@ -346,7 +346,7 @@ class Systems:
 
 
 
-    def evolve(self, gal, multiproc=None, int_method='odeint', Tint_max=120, resolution=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False, interpolants=None):
+    def evolve(self, gal, multiproc=None, int_method='odeint', Tint_max=120, resolution=1000, save_traj=False, downsample=None, outdir=None, fixed_potential=False, interpolants=None, label=None):
         """
         Evolves the tracer particles using galpy's 'Evolve' method
         Does for each bound systems until one of two conditions are met:
@@ -449,8 +449,12 @@ class Systems:
         # combine the trajectories into a single hdf5 file, if save_traj==True
         print('Combining trajectory files into single hdf5 file...\n')
         if save_traj==True:
+            if label:
+                savepath = outdir+'/'+label+'.hdf'
+            else:
+                savepath = outdir+'/output.hdf'
             trajectories = pd.read_csv(outdir+'/trajectories.tmp', index_col='idx')
-            trajectories.to_hdf(outdir+'/output.hdf', key='trajectories')
+            trajectories.to_hdf(savepath, key='trajectories')
             os.remove(outdir+'/trajectories.tmp')
 
         return
@@ -458,7 +462,7 @@ class Systems:
 
 
 
-    def write(self, gal, outdir):
+    def write(self, gal, outdir, label=None):
         """Write tracer data as hdf file to specified outpath.
         """
 
@@ -473,7 +477,11 @@ class Systems:
                 tracers[attr] = values
         tracers.index.name = 'idx'
 
-        tracers.to_hdf(outdir+'/output.hdf', key='tracers', mode='a')
+        if label:
+            savepath = outdir+'/'+label+'.hdf'
+        else:
+            savepath = outdir+'/output.hdf'
+        tracers.to_hdf(savepath, key='tracers', mode='a')
 
         return
 

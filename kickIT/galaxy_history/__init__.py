@@ -393,12 +393,16 @@ class GalaxyHistory:
         return
 
 
-    def write(self, outdir):
+    def write(self, outdir, label=None):
         """Writes the galaxy data to a pickled file.
         """
 
         print("Writing galaxy data in directory '{0:s}'...\n".format(outdir))
-        pickle.dump(self, open(outdir+'/galaxy.pkl', 'wb'))
+        if label:
+            savepath = outdir+'/'+label+'.pkl'
+        else:
+            savepath = outdir+'/galaxy.pkl'
+        pickle.dump(self, open(savepath, 'wb'))
         return
 
 

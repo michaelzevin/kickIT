@@ -34,6 +34,7 @@ def parse_commandline():
     parser.add_argument('-g', '--gal-path', type=str, help="Path to pickled gal file that we want to create interpolants for.")
     parser.add_argument('-mp', '--multiproc', type=str, default=None, help="If specified, will parallelize over the number of cores provided as an argument. Can also use the string 'max' to parallelize over all available cores. Default is None.")
     parser.add_argument('--interp-path', type=str, default='./interp.pkl', help="Path to where the interpolation file will be saved. Default is '/.interp.pkl'.")
+    parser.add_argument('--label', type=str, default=None, help="Provide user-defined label for naming galaxy and output files. Default is 'None'.")
 
     # defining grid properties for interpolations
     parser.add_argument('-rg', '--Rgrid', type=int, default=100, help="Number of gridpoints for the Z-component of the interpolation model. Default is 100.")
