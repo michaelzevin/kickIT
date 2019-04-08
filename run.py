@@ -35,8 +35,8 @@ def parse_commandline():
     parser.add_argument('-g', '--grb', type=str, help="GRB for which we want to perform analysis.")
     parser.add_argument('-N', '--Nsys', type=int, default=1, help="Number of systems you wish to run for this particular starting time. Default is 1.")
     parser.add_argument('-mp', '--multiproc', type=str, default=None, help="If specified, will parallelize over the number of cores provided as an argument. Can also use the string 'max' to parallelize over all available cores. Default is None.")
-    parser.add_argument('--fixed-birth', type=int, default=None, help="Fixes the birth time of the progenitor system by specifying a timestep (t0). Default=None.")
-    parser.add_argument('--fixed-potential', type=int, default=None, help="Fixes the galactic potential to the potential of the galaxy at the timestep t0. Also samples the location of the system according to this galactic model. Default=None.")
+    parser.add_argument('--fixed-birth', type=int, default=None, help="Fixes the birth time of the progenitor system by specifying a timestep (t0). If negative number is provided, will choose the timestep immediately before the population age. Default=None.")
+    parser.add_argument('--fixed-potential', type=int, default=None, help="Fixes the galactic potential to the potential of the galaxy at the timestep t0. Also samples the location of the system according to this galactic model. If negative number is provided, will choose the final timestep (i.e. the observed galaxy). Default=None.")
     parser.add_argument('--gal-only', action='store_true', help="If true, will stop the code after constructing the galaxy model. Useful for prepping galaxy models for interpolation. Default=False.")
 
 
@@ -161,8 +161,28 @@ def main(args):
 
 
 
+    # --- Parse the fixed birth and fixed potential arguments
+    if args.fixed_birth:
+        if args.fixed_birth > 0:
+            fixed_birth = args.fixed_birth
+        elif args.fixed_birth <= 0:
+            # if negative, take the timestep just before the bulk of the stellar population formed
+            t_pop = gal.times[-1]-gal.obs_props['age_stars']
+            fixed_birth = int(np.argwhere(gal.times-t_pop < 0)[-1])
+    else:
+        fixed_birth=None
 
-    # --- sample progenitor parameters
+    if args.fixed_potential:
+        if args.fixed_potential > 0:
+            fixed_potential = args.fixed_potential
+        elif args.fixed_potential <= 0:
+            # if negative, take the final (the observed) timestep
+            fixed_potential = len(gal.times)-1
+    else:
+        fixed_potential=None
+
+
+    # --- Sample progenitor parameters
 
     # construct dict of params for sampling methods
     params_dict={
@@ -187,14 +207,14 @@ def main(args):
                                 R_method=args.R_method, \
                                 params_dict = params_dict, \
                                 samples = args.samples_path, \
-                                fixed_birth = args.fixed_birth, \
-                                fixed_potential = args.fixed_potential)
+                                fixed_birth = fixed_birth, \
+                                fixed_potential = fixed_potential)
 
     # --- otherwise we sample in only Vsys and Tinsp
     else:
         print('Skipping sampling of progenitor parameters, sampling only R and Vsys and feeding to the integrator...\n')
 
-        sampled_parameters = sample.sample_Vsys_R(gal, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_birth=args.fixed_birth, fixed_potential=args.fixed_potential)
+        sampled_parameters = sample.sample_Vsys_R(gal, Nsys=args.Nsys, Vsys_range=(0,1000), R_method=args.R_method, fixed_birth=fixed_birth, fixed_potential=fixed_potential)
 
 
     # --- Initialize systems class
@@ -202,7 +222,7 @@ def main(args):
 
     # --- Calculate the instantaneous particle escape velocities and galactic velocities at birth
     systems.escape_velocity(gal, interpolants)
-    systems.galactic_velocity(gal, interpolants, args.fixed_potential)
+    systems.galactic_velocity(gal, interpolants, fixed_potential)
 
     # --- If we sampled the porgenitor properties, we need to determine the impact of the SN and the inspiral time, and bring the system into the galactic frame
     if args.sample_progenitor_props:
@@ -231,7 +251,7 @@ def main(args):
                         save_traj=args.save_traj, \
                         downsample=args.downsample, \
                         outdir = args.output_dirpath, \
-                        fixed_potential = args.fixed_potential, \
+                        fixed_potential = fixed_potential, \
                         interpolants = interpolants, \
                         label = args.label)
 

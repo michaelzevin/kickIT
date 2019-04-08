@@ -447,8 +447,7 @@ class GalaxyHistory:
         growth_quiescent = q_mass_stars[-1] - q_mass_stars[0]
         frac = growth_quiescent / q_mass_stars[-1]
         print("During quiescent state, galaxy grew by {0:0.2e} (dM={1:0.2e})\n".format(frac, growth_quiescent))
-        # For the model to be consistent, the fractional growth during "quiescent" phase should be
-        # negligible
+        # For the model to be consistent, the fractional growth during "quiescent" phase should be negligible
         if frac > 0.05:
             warnings.warn("Significant galaxy growth during 'quiescent' phase!")
 
