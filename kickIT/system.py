@@ -466,7 +466,7 @@ class Systems:
         """Write tracer data as hdf file to specified outpath.
         """
 
-        print("Writing tracer data in directory '{0:s}'...\n".format(outdir))
+        print("Writing tracer data in directory {0:s}...\n".format(outdir))
 
         # --- write the inspiral time as the time difference between tbirth and tsGRB
         self.Tinsp = gal.times[-1] - self.tbirth

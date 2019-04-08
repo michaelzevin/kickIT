@@ -45,7 +45,7 @@ def parse_commandline():
     parser.add_argument('--sgrb-path', type=str, help="Path to the table with sGRB host galaxy information.")
     parser.add_argument('--samples-path', type=str, default=None, help="Path to the samples from population synthesis for generating the initial population of binaries. Default is None.")
     parser.add_argument('--interp-path', type=str, default=None, help="Path to the potential interpolation file you wish to use. Default is None.")
-    parser.add_argument('--gal-path', type=str, default=None, help="Sets path to read in previously constructed galaxy realizzation. Default is 'None'.")
+    parser.add_argument('--gal-path', type=str, default=None, help="Sets path to read in previously constructed galaxy realization. Default is 'None'.")
     parser.add_argument('--label', type=str, default=None, help="Provide user-defined label for naming galaxy and output files. Default is 'None'.")
 
     # galaxy arguments

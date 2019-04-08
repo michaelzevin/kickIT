@@ -397,7 +397,7 @@ class GalaxyHistory:
         """Writes the galaxy data to a pickled file.
         """
 
-        print("Writing galaxy data in directory '{0:s}'...\n".format(outdir))
+        print("Writing galaxy data in directory {0:s}...\n".format(outdir))
         if label:
             savepath = outdir+'/'+label+'.pkl'
         else:
