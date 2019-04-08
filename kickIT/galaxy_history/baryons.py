@@ -74,7 +74,7 @@ def sfr_rad_dist(rads, mstar, scaling=1.0):
     return sfr, rs
 
 
-def sfr_main_seq(mass, redz, cosmo):
+'''def sfr_main_seq(mass, redz, cosmo):
     """Star-forming Main-Sequence
 
     See: 1405.2041, Speagle+2014, Eq. 28
@@ -88,7 +88,7 @@ def sfr_main_seq(mass, redz, cosmo):
         sfr = gamma * np.log10(mass) + sfr_amp
         sfr = 10**sfr
     return sfr
-
+'''
 
 def gas_mass_from_stellar_mass(mstar):
     """Gas-Mass -- Stellar-Mass Relation
@@ -133,3 +133,75 @@ def halo_mass_to_stellar_mass(mhalo):
     t2 = np.power(mhalo/M0, +GUO_0909_4305.beta)
     mstar = mhalo * GUO_0909_4305.c * np.power(t1 + t2, -GUO_0909_4305.gamma)
     return mstar
+
+
+
+
+
+def sfr_main_seq(cosmo, mass, redz=None, time=None):
+    """Star-forming Main-Sequence
+
+    `mass` must be in grams!
+
+    See: 1405.2041, Speagle+2014, Eq. 28
+    """
+    if time is None:
+        time = cosmo.age(redz).cgs.value
+
+    tt = (time / GYR)
+    mm = (mass / MSOL)
+    sfr_amp = -(6.51 - 0.11*tt)      # Msol/yr
+    gamma = 0.84 - 0.026*tt
+    sfr = gamma * np.log10(mm) + sfr_amp
+    sfr = np.power(10, sfr)
+    # sfr = gamma * np.log(mass/MSOL) + sfr_amp
+    # Convert from [Msol/Yr] to [g/s]
+    # sfr = np.exp(sfr) * MSOL / YR
+    sfr = sfr * MSOL / YR
+    return sfr
+
+
+
+def arg_nearest(edges, value):
+    # This is the index of the edge to the *right* of (i.e. above) each value
+    idx = np.searchsorted(edges, value, side="left").clip(max=edges.size-1)
+    # Find the distances to each nearest bin edge
+    dist_lo = np.fabs(value - edges[idx-1])
+    dist_hi = np.fabs(value - edges[idx])
+    # If left ('lo') is nearer, mask=1, and we shift from the right edge to the left edge
+    mask = (idx > 0) & ((idx == edges.size) | (dist_lo < dist_hi))
+    idx = idx - mask
+    return idx
+
+
+def quick_sfr_history(cosmo, times, tquench, mass, wind=0.0):
+    """Very coarse SFR and stellar-mass history to estimate mean stellar ages.
+
+    Times should be a fairly-fine spacing of universe ages [seconds]
+    tquench is the time SFR stops [seconds]
+    mass is the final stellar-mass [grams]
+
+    """
+
+    ii = arg_nearest(times, tquench)
+    # print("tau: {}, ii = {}, times[ii] = {}".format(tau/GYR, ii, times[ii]/GYR))
+    mm = mass
+    sfr = np.zeros_like(times)
+    age = 0.0
+    cnt = 0
+    while (ii >= 0) and (mm > 0.0):
+        tt = times[ii]
+        dt = times[ii] - times[ii-1] if ii > 0 else times[ii+1] - times[ii]
+        psi = sfr_main_seq(cosmo, mm, time=tt)
+        psi = (1.0 - wind) * psi
+        sfr[ii] = psi
+        dm = sfr[ii] * dt
+        mm -= dm
+        age += dm * (times[-1] - tt)
+        ii -= 1
+        cnt += 1
+
+    age /= mass
+    # print("Age: {:.2f} [Gyr]".format(age/GYR))
+
+    return sfr, age
