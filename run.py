@@ -125,9 +125,10 @@ def main(args):
 
     # --- Read in or construct galaxy class
     if args.gal_path:
-        gal = pickle.load(open(args.gal_path, 'rb'))
         print('Using galaxy realization living at {0:s}...\n'.format(args.gal_path))
+        gal = pickle.load(open(args.gal_path, 'rb'))
     else:
+        print('Constructing galaxy...\n'.format(args.gal_path))
         gal = galaxy_history.GalaxyHistory(\
                             obs_props = obs_props,\
                             disk_profile = args.disk_profile,\

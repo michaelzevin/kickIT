@@ -57,7 +57,7 @@ def shell_volumes(rads, relative=True, reset_inner=True):
 
 def euler_rot(vectors, angles, axis):
     """
-    Performed Euler angle transformation on vector. 
+    Performed Euler angle transformation on vector.
 
     Takes in vectors as (Nsamples x Ndim)
     """
@@ -160,7 +160,7 @@ def cylindrical_to_cartesian(R,Phi,Z,vR,vPhi,vZ):
     vz = vZ.to(u.km/u.s)
 
     return x,y,z,vx,vy,vz
-    
+
 
 
 def Mphys_to_nat(M, ro=8*u.kpc, vo=220*u.km/u.s):
@@ -232,7 +232,7 @@ def orbit_phys_to_nat(R, vR, vT, Z, vZ, Phi, ro=8*u.kpc, vo=220*u.km/u.s):
     Z = Z/ro
     vZ = vZ/vo
     Phi = Phi
-    
+
     return R.value, vR.value, vT.value, Z.value, vZ.value, Phi.value
 
 
@@ -246,9 +246,150 @@ def orbit_nat_to_phys(R, vR, vT, Z, vZ, Phi, ro=8*u.kpc, vo=220*u.km/u.s):
     Z = Z*ro
     vZ = vZ*vo
     Phi = (Phi % (2*np.pi)) * u.rad
-    
+
     return R, vR, vT, Z, vZ, Phi
 
 
 
+
+# Functions for calculating functions with deviations from mean relations
+
+def renumerate(arr):
+    """Reverse Enumerate an array (with reversed indices also).
+    """
+    return zip(reversed(range(len(arr))), reversed(arr))
+
+
+class Outlier():
+
+    def __init__(self, xgrid, function=None, sgrid=None, ygrid=None, nmc=1e4, store=False):
+        nmc = int(nmc)
+
+        if function is None:
+            function = self.function
+
+        # Construct a grid of standard-deviation values
+        if sgrid is None:
+            SIGMA_GRID_RANGE = [-5.0, 5.0]   # standard-deviations
+            SIGMA_GRID_SIZE = 50
+            sgrid = np.linspace(*SIGMA_GRID_RANGE, SIGMA_GRID_SIZE)
+
+        # Convert standard-deviations to percentiles
+        sigma_percentiles = sp.stats.norm.cdf(sgrid)
+
+        # Use the function to stochastically sample y-values
+        #    shape: (N, M) for `N` x-vals, and `M` MC samples
+        yvals_from_xgrid = function(xgrid[:, np.newaxis], size=nmc)
+
+        # Calculate percentile-distributions of y-vals
+        #    shape: (L, N) for `L` standard-deviation values and `N` (input) x-values
+        yvals_percs = np.percentile(yvals_from_xgrid, 100*sigma_percentiles, axis=-1)
+
+        # Construct grid of y-values
+        if ygrid is None:
+            # Find the range of valid y-values
+            #    Min is the one reached by *highest* percentile, at lowest  x-value
+            #    Max is the one reached by *lowest*  percentile, at highest x-value
+            yvals_range = [np.max(yvals_percs[:, 0]), np.min(yvals_percs[:, -1])]
+            ygrid = np.linspace(*yvals_range, xgrid.size+1)
+
+        # Interpolate to find x-values corresponding to y-values at each percentile
+        xvals_percs = [sp.interpolate.interp1d(pp, xgrid)(ygrid)
+                       for pp in yvals_percs]
+
+        if store:
+            self._xgrid = xgrid
+            self._ygrid = ygrid
+            self._sgrid = sgrid
+            self._xvals_percs = xvals_percs
+            self._yvals_percs = yvals_percs
+
+        # Construct 2D interpolants between values using standard deviations
+        self._y_from_x_sigma = sp.interpolate.interp2d(xgrid, sgrid, yvals_percs)
+        self._x_from_y_sigma = sp.interpolate.interp2d(ygrid, sgrid[::-1], xvals_percs)
+
+        return
+
+    @classmethod
+    def function(cls, xx, size=None):
+        raise NotImplementedError("Must be overridden in initialization or overwritten in subclass")
+
+    def xs_to_y(self, xvals, sigma=0.0):
+        yvals = self._y_from_x_sigma(xvals, sigma)
+        return yvals
+
+    def ys_to_x(self, yvals, sigma=0.0):
+        xvals = self._x_from_y_sigma(yvals, sigma)
+        return xvals
+
+
+class OutlierND():
+
+    def __init__(self, xgrids, function=None, sgrid=None, ygrid=None, nmc=1e4, store=False):
+        nmc = int(nmc)
+
+        if function is None:
+            function = self.function
+
+        # Construct a grid of standard-deviation values
+        if sgrid is None:
+            SIGMA_GRID_RANGE = [-5.0, 5.0]   # standard-deviations
+            SIGMA_GRID_SIZE = 50
+            sgrid = np.linspace(*SIGMA_GRID_RANGE, SIGMA_GRID_SIZE)
+
+        # Convert standard-deviations to percentiles
+        sigma_percentiles = sp.stats.norm.cdf(sgrid)
+
+        # Create a meshgrid from the tuple of grids in each dimension
+        mesh = np.meshgrid(*xgrids, indexing='ij')
+
+        # Use the function to stochastically sample y-values
+        #    shape: (N, M) for `N` x-vals, and `M` MC samples
+        yvals_from_xgrid = function(*mesh, samples=nmc)
+        # Calculate percentile-distributions of y-vals
+        #    shape: (L, N) for `L` standard-deviation values and `N` (input) x-values
+        yvals_percs = np.percentile(yvals_from_xgrid, 100*sigma_percentiles, axis=-1)
+        yvals_percs = np.moveaxis(yvals_percs, 0, -1)
+
+        # Construct grid of y-values
+        if ygrid is None:
+            # Find the range of valid y-values
+            #    Min is the one reached by *highest* percentile, at lowest  x-value
+            #    Max is the one reached by *lowest*  percentile, at highest x-value
+            yvals_range = [np.max(yvals_percs[:, 0]), np.min(yvals_percs[:, -1])]
+            ysize = np.max(np.shape(mesh)) + 1
+            ygrid = np.linspace(*yvals_range, ysize)
+
+        # Interpolate to find x-values corresponding to y-values at each percentile
+        # xvals_percs = [sp.interpolate.interp1d(pp, xgrid)(ygrid)
+        #                for pp in yvals_percs]
+
+        if store:
+            self._mesh = mesh
+            self._ygrid = ygrid
+            self._sgrid = sgrid
+            self._yvals_percs = yvals_percs
+
+        # Construct 2D interpolants between values using standard deviations
+        args = tuple(xgrids) + (sgrid,)
+        self._y_from_x_sigma = sp.interpolate.RegularGridInterpolator(
+            args, yvals_percs, method='linear', bounds_error=True)
+        # self._y_from_x_sigma = sp.interpolate.interp2d(xgrid, sgrid, yvals_percs)
+        # self._x_from_y_sigma = sp.interpolate.interp2d(ygrid, sgrid[::-1], xvals_percs)
+
+        return
+
+    def __call__(self, *args, **kwargs):
+        return self.xs_to_y(*args, **kwargs)
+
+    @classmethod
+    def function(cls, *xvals, samples=None):
+        raise NotImplementedError("Must be overridden in initialization or overwritten in subclass")
+
+    def xs_to_y(self, xvals, sigma=0.0):
+        if np.isscalar(sigma):
+            sigma = np.ones(np.shape(xvals)[0]) * sigma
+        args = np.concatenate((xvals, sigma[:, np.newaxis]), axis=-1)
+        yvals = self._y_from_x_sigma(args)
+        return yvals
 
