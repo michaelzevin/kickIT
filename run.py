@@ -109,7 +109,7 @@ def main(args):
         os.makedirs(args.output_dirpath)
 
     # --- read sgrb hostprops table as pandas dataframe, parse observed props
-    sgrb_host_properties = pd.read_csv(args.sgrb_path, delim_whitespace=True, na_values='-')
+    sgrb_host_properties = pd.read_csv(args.sgrb_path, delim_whitespace=True, na_values='-', converters={'GRB': lambda x: str(x)})
     gal_info = sgrb_host_properties.loc[sgrb_host_properties['GRB'] == args.grb].iloc[0]
     obs_props = {'name':gal_info['GRB'],\
                       'pcc':gal_info['Pcc'],\
