@@ -200,7 +200,11 @@ def weight_tracers_from_observations(tracers, offset, offset_error, normalize=Tr
     Takes in offset and offset error in kpc
     """
 
-    weights = norm.pdf(tracers['Rproj_offset'], offset, offset_error)
+    # make anything that is more than 10-sigma off just equal 0.0
+    weights = np.zeros_like(tracers['Rproj_offset'])
+    close = tracers.loc[(tracers['Rproj_offset'] >= (offset-10*offset_error)) & (tracers['Rproj_offset'] <= (offset+10*offset_error))]
+    close_weights = norm.pdf(close['Rproj_offset'], offset, offset_error)
+    weights[close.index] = close_weights
 
     # --- normalize
     if normalize==True:
@@ -226,7 +230,11 @@ def weight_samples_from_tracers(tracers, offset, offset_error, Vsys_samps, Tinsp
     tracers_data = np.asarray([Vsys_tracers, Tinsp_tracers])
 
     # --- get weights based on observed offset and normalize
-    weights = norm.pdf(tracers['Rproj_offset'], offset, offset_error)
+    # make anything that is more than 10-sigma off just equal 0.0
+    weights = np.zeros_like(tracers['Rproj_offset'])
+    close = tracers.loc[(tracers['Rproj_offset'] >= (offset-10*offset_error)) & (tracers['Rproj_offset'] <= (offset+10*offset_error))]
+    close_weights = norm.pdf(close['Rproj_offset'], offset, offset_error)
+    weights[close.index] = close_weights
     if normalize==True:
         weights = normalize_weights(weights)
 
