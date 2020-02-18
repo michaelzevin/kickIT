@@ -9,6 +9,8 @@ from scipy.integrate import trapz
 import astropy.units as u
 import astropy.constants as C
 
+from tqdm import tqdm
+
 from . import galaxy_history
 
 
@@ -20,11 +22,11 @@ VERBOSE=True
 
 def normalize_weights(weights):
     """
-    Normalizes a set of weights, such that the maximum weight is 1.0
+    Normalizes a set of weights, such that the sum of all weights is 1.0
 
     Returns a modified 'systems' dataframe with normalized weights
     """
-    weights = weights*(1./weights.max())
+    weights = (weights - weights.min()) / (weights.max()-weights.min())
 
     return weights
 
@@ -40,7 +42,7 @@ def normalize_data(samps, tracers):
 
     return samps_normed, tracers_normed
 
-def combine_weights(weights, combine_method='add', normalize=True):
+def combine_weights(weights, combine_method='multiply', normalize=True):
     """
     Combines weights in quadrature
 
@@ -161,7 +163,7 @@ def weight_tracers_by_vsys(tracers, method='maxwellian', param=265.0, normalize=
 
 # --- weight tracers according to popsynth samples
 
-def weight_tracers_from_samples(tracers, Vsys_samps, Tinsp_samps, normalize=True):
+def weight_tracers_from_samples(tracers, Vsys_samps, Tinsp_samps, normalize=True, Tinsp_min=1e-6):
     """
     Weights systems by comparing to a generated population of systems
 
@@ -172,21 +174,28 @@ def weight_tracers_from_samples(tracers, Vsys_samps, Tinsp_samps, normalize=True
 
     # --- read in and normalize data
     Vsys_samps, Vsys_tracers = normalize_data(Vsys_samps, tracers['Vsys'])
-    Tinsp_samps, Tinsp_tracers = normalize_data(Tinsp_samps, tracers['Tinsp'])
+    Tinsp_samps[np.where(Tinsp_samps < Tinsp_min)[0]] = Tinsp_min #set minimum Tinsp
+    Tinsp_samps, Tinsp_tracers = normalize_data(np.log10(Tinsp_samps), np.log10(tracers['Tinsp']))# for Tinsp, we use log of data
     pop_data = np.asarray([Vsys_samps, Tinsp_samps])
     tracers_data = np.asarray([Vsys_tracers, Tinsp_tracers])
 
     # --- generate KDE
     kde = gaussian_kde(pop_data)
+    # NOTE: resampling from this will give us some values
+    # outside the viable range
 
     # --- get weights
-    weights = kde.pdf(tracers_data)
+    weights = []
+    for sub_arr in tqdm(np.array_split(tracers_data, 1000, axis=1)):
+        weights.append(kde.pdf(sub_arr))
+    weights = [item for sublist in weights for item in sublist]
+    weights = np.asarray(weights)
 
     # --- normalize
     if normalize==True:
         weights = normalize_weights(weights)
 
-    return np.asarray(weights)
+    return weights
 
 
 
@@ -216,37 +225,40 @@ def weight_tracers_from_observations(tracers, offset, offset_error, normalize=Tr
 
 # --- weight popsynth according to tracers and offset constraint
 
-def weight_samples_from_tracers(tracers, offset, offset_error, Vsys_samps, Tinsp_samps, normalize=True):
+def weight_samples_from_tracers(tracers, offset, offset_error, Vsys_samps, Tinsp_samps, normalize=True, Tinsp_min=1e-6):
     """
     Weights popsynth samples according to the tracer particles and the offset constraint
 
     Must provide a inspiral times (in Gyr) and Vsys (in km/s) from the population
     """
 
-    # --- read in and normalize data
-    Vsys_samps, Vsys_tracers = normalize_data(Vsys_samps, tracers['Vsys'])
-    Tinsp_samps, Tinsp_tracers = normalize_data(Tinsp_samps, tracers['Tinsp'])
-    pop_data = np.asarray([Vsys_samps, Tinsp_samps])
-    tracers_data = np.asarray([Vsys_tracers, Tinsp_tracers])
-
     # --- get weights based on observed offset and normalize
-    # make anything that is more than 10-sigma off just equal 0.0
-    weights = np.zeros_like(tracers['Rproj_offset'])
-    close = tracers.loc[(tracers['Rproj_offset'] >= (offset-10*offset_error)) & (tracers['Rproj_offset'] <= (offset+10*offset_error))]
-    close_weights = norm.pdf(close['Rproj_offset'], offset, offset_error)
-    weights[close.index] = close_weights
+    # downsample to anything that is less than 5-sigma off
+    tracers = tracers.loc[(tracers['Rproj_offset'] >= (offset-5*offset_error)) & (tracers['Rproj_offset'] <= (offset+5*offset_error))]
+    weights = norm.pdf(tracers['Rproj_offset'], offset, offset_error)
     if normalize==True:
         weights = normalize_weights(weights)
+
+    # --- read in and normalize data
+    Vsys_samps, Vsys_tracers = normalize_data(Vsys_samps, tracers['Vsys'])
+    Tinsp_samps[np.where(Tinsp_samps < Tinsp_min)[0]] = Tinsp_min #set minimum Tinsp
+    Tinsp_samps, Tinsp_tracers = normalize_data(np.log10(Tinsp_samps), np.log10(tracers['Tinsp']))# for Tinsp, we use log of data
+    pop_data = np.asarray([Vsys_samps, Tinsp_samps])
+    tracers_data = np.asarray([Vsys_tracers, Tinsp_tracers])
 
     # --- generate KDE
     kde = gaussian_kde(tracers_data, weights=weights)
 
     # --- get weights for the population
-    pop_weights = kde.pdf(pop_data)
+    pop_weights = []
+    for sub_arr in tqdm(np.array_split(pop_data, 1000, axis=1)):
+        pop_weights.append(kde.pdf(sub_arr))
+    pop_weights = [item for sublist in pop_weights for item in sublist]
+    pop_weights = np.asarray(pop_weights)
 
     # --- normalize
     if normalize==True:
         pop_weights = normalize_weights(pop_weights)
 
-    return np.asarray(pop_weights)
+    return pop_weights
 
