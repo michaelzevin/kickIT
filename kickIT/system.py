@@ -382,9 +382,10 @@ class Systems:
 
 
         # --- if save_traj==True, write the temporary trajectories directory
-        columns = ['idx','X','Y','Z','vX','vY','vZ','R_offset','Rproj_offset','time']
-        trajectories = pd.DataFrame(columns=columns)
-        trajectories.to_csv(outdir+'/trajectories.tmp', index=False)
+        if save_traj:
+            columns = ['idx','X','Y','Z','vX','vY','vZ','R_offset','Rproj_offset','time']
+            trajectories = pd.DataFrame(columns=columns)
+            trajectories.to_csv(outdir+'/trajectories.tmp', index=False)
 
 
 
@@ -586,7 +587,13 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
 
                 # initialize the orbit and integrate, store redshift of merger
                 orb = Orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
-                orb.integrate(ts, potentials[tt_pot], method=int_method)
+
+                # FIXME: adding exception since running into division by zero issue
+                try:
+                    orb.integrate(ts, potentials[tt_pot], method=int_method)
+                except ZeroDivisionError:
+                    print('Zero Division Error!')
+                    return 0,0,0,0,0,0,0,0,0
 
                 age = times[t0]+Tinsp
                 merger_redz = float(cosmo.tage_to_z(age.to(u.s)))
@@ -606,7 +613,13 @@ def integrate_orbits(system, gal, int_method='odeint', Tint_max=60, resolution=1
 
             # initialize the orbit and integrate
             orb = Orbit(vxvv=[R, vR, vT, Z, vZ, Phi])
-            orb.integrate(ts, potentials[tt_pot], method=int_method)
+
+            # FIXME: adding exception since running into division by zero issue
+            try:
+                orb.integrate(ts, potentials[tt_pot], method=int_method)
+            except ZeroDivisionError:
+                print('Zero Division Error!')
+                return 0,0,0,0,0,0,0,0,0
 
 
 
