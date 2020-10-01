@@ -175,6 +175,7 @@ def weight_tracers_from_samples(tracers, Vsys_samps, Tinsp_samps, normalize=True
     # --- read in and normalize data
     Vsys_samps, Vsys_tracers = normalize_data(Vsys_samps, tracers['Vsys'])
     Tinsp_samps[np.where(Tinsp_samps < Tinsp_min)[0]] = Tinsp_min #set minimum Tinsp
+    #Tinsp_samps, Tinsp_tracers = normalize_data(Tinsp_samps, tracers['Tinsp'])
     Tinsp_samps, Tinsp_tracers = normalize_data(np.log10(Tinsp_samps), np.log10(tracers['Tinsp']))# for Tinsp, we use log of data
     pop_data = np.asarray([Vsys_samps, Tinsp_samps])
     tracers_data = np.asarray([Vsys_tracers, Tinsp_tracers])
@@ -242,6 +243,7 @@ def weight_samples_from_tracers(tracers, offset, offset_error, Vsys_samps, Tinsp
     # --- read in and normalize data
     Vsys_samps, Vsys_tracers = normalize_data(Vsys_samps, tracers['Vsys'])
     Tinsp_samps[np.where(Tinsp_samps < Tinsp_min)[0]] = Tinsp_min #set minimum Tinsp
+    #Tinsp_samps, Tinsp_tracers = normalize_data(Tinsp_samps, tracers['Tinsp'])
     Tinsp_samps, Tinsp_tracers = normalize_data(np.log10(Tinsp_samps), np.log10(tracers['Tinsp']))# for Tinsp, we use log of data
     pop_data = np.asarray([Vsys_samps, Tinsp_samps])
     tracers_data = np.asarray([Vsys_tracers, Tinsp_tracers])
